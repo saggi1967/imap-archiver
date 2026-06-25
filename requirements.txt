@@ -1,0 +1,8 @@
+typer>=0.15.0
+imapclient>=3.0.1
+pydantic-settings>=2.7.0
+rich>=13.0.0
+elasticsearch>=9,<10
+pypdf>=5.0.0
+python-docx>=1.1.0
+openpyxl>=3.1.0

@@ -1,0 +1,13 @@
+.env
+*.db
+__pycache__/
+*.egg-info/
+.venv/
+
+# Daten/Backups (enthalten potenziell echte E-Mails) niemals committen
+*.tgz
+*.tar
+*.tar.gz
+*.zip
+*.eml
+*.mbox
