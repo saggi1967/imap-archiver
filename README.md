@@ -4,7 +4,7 @@
 
 **Read-only IMAP-Mailarchiv mit Volltextsuche – von der Mailbox in SQLite und Elasticsearch.**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](#)
+[![Version](https://img.shields.io/badge/version-2.0.0.0-blue)](#)
 [![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](#)
 [![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.x-005571?logo=elasticsearch&logoColor=white)](#)
 [![CLI](https://img.shields.io/badge/CLI-Typer%20%2B%20Rich-009688)](#)
