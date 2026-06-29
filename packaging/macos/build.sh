@@ -67,10 +67,18 @@ tiffutil -cathidpicheck \
 
 # --- 3. PyInstaller ---------------------------------------------------------
 echo "==> [3/5] Eigenständige Binary bauen (PyInstaller)"
+# Saubere Quell-Kopie (nur das app-Paket). Wichtig: NICHT den ganzen Quellbaum
+# auf den Pfad legen – ein dort liegendes *.egg-info eines früheren editable-
+# Installs würde sonst mitgebündelt, und importlib.metadata meldete dessen
+# (veraltete) Version statt des Fallbacks aus app/__init__.py.
+SRC="$BUILD/src"
+mkdir -p "$SRC"
+cp -R "$ROOT/app" "$SRC/app"
+
 "$VENV/bin/pyinstaller" --noconfirm --clean \
   --name "$APP_NAME" \
   --onedir --console \
-  --paths "$ROOT" \
+  --paths "$SRC" \
   --collect-submodules app \
   --collect-all elasticsearch \
   --collect-data docx \
