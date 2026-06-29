@@ -42,6 +42,8 @@ _EP_QUERY = (
     "mailarc search query --from chef@firma.de --last 7d\n"
     "# nur im Betreff und nur Mails mit Anhang\n"
     "mailarc search query -s Protokoll --attachments\n"
+    "# exakte Phrase (Tokens direkt aufeinander), z. B. eine Belegnummer\n"
+    "mailarc search query \"26/130\" --phrase\n"
     "# Anhang-Dateiname + Zeitraum, als JSON\n"
     "mailarc search query --file .pdf --since 2026-01-01 --json"
 )
@@ -138,6 +140,7 @@ def build_query(
     has_attachment: bool | None,
     since: str | None,
     until: str | None,
+    phrase: bool = False,
 ) -> dict:
     must: list[dict] = []
     filt: list[dict] = []
@@ -148,7 +151,9 @@ def build_query(
                 "multi_match": {
                     "query": text,
                     "fields": ["subject^3", "from_name^2", "body", "attachment_text"],
-                    "type": "best_fields",
+                    # phrase: Tokens müssen direkt aufeinanderfolgen (z. B. "26/130"),
+                    # statt best_fields, das einzelne Tokens per OR matcht.
+                    "type": "phrase" if phrase else "best_fields",
                 }
             }
         )
@@ -225,6 +230,9 @@ def query(
     to: str = typer.Option(None, "--to", help="Exakte Empfängeradresse."),
     domain: str = typer.Option(None, "--domain", help="Absender-Domain, z. B. firma.de."),
     subject: str = typer.Option(None, "--subject", "-s", help="Nur im Betreff suchen."),
+    phrase: bool = typer.Option(
+        False, "--phrase", "-x", help="Exakte Phrase: Tokens müssen direkt aufeinanderfolgen (z. B. 26/130)."
+    ),
     file: str = typer.Option(None, "--file", help="Anhang-Dateiname (Teilwort)."),
     mailbox: str = typer.Option(None, "--mailbox", help="Auf einen IMAP-Ordner einschränken."),
     attachments: bool = typer.Option(
@@ -241,7 +249,9 @@ def query(
     if last:
         since_iso = _parse_last(last)
 
-    q = build_query(text, frm, to, domain, subject, file, mailbox, attachments, since_iso, until)
+    q = build_query(
+        text, frm, to, domain, subject, file, mailbox, attachments, since_iso, until, phrase
+    )
     client = es.client()
     resp = client.search(
         index=settings.ES_INDEX,
@@ -308,10 +318,13 @@ def count(
     since: str = typer.Option(None, "--since"),
     until: str = typer.Option(None, "--until"),
     last: str = typer.Option(None, "--last"),
+    phrase: bool = typer.Option(
+        False, "--phrase", "-x", help="Exakte Phrase: Tokens müssen direkt aufeinanderfolgen."
+    ),
 ) -> None:
     """Zählt Treffer, ohne sie auszugeben."""
     since_iso = _parse_last(last) if last else since
-    q = build_query(text, frm, None, domain, None, None, mailbox, None, since_iso, until)
+    q = build_query(text, frm, None, domain, None, None, mailbox, None, since_iso, until, phrase)
     client = es.client()
     n = client.count(index=settings.ES_INDEX, query=q)["count"]
     console.print(f"[bold green]{n}[/] Treffer")
