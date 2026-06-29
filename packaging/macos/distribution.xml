@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>mailarc __VERSION__</title>
+    <organization>de.microtronix</organization>
+
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <license file="LICENSE.txt" mime-type="text/plain"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+
+    <options customize="never" require-scripts="false"
+             hostArchitectures="arm64,x86_64"/>
+    <domains enable_localSystem="true"/>
+
+    <choices-outline>
+        <line choice="default">
+            <line choice="de.microtronix.mailarc"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="de.microtronix.mailarc" visible="false">
+        <pkg-ref id="de.microtronix.mailarc"/>
+    </choice>
+
+    <pkg-ref id="de.microtronix.mailarc" version="__VERSION__"
+             onConclusion="none">mailarc-component.pkg</pkg-ref>
+</installer-gui-script>

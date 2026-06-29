@@ -1,0 +1,9 @@
+#!/bin/bash
+# Verlinkt das installierte Programm nach /usr/local/bin, damit `mailarc`
+# direkt im PATH liegt.
+set -e
+
+mkdir -p /usr/local/bin
+ln -sf "/usr/local/mailarc/mailarc" "/usr/local/bin/mailarc"
+
+exit 0

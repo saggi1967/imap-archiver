@@ -1,0 +1,17 @@
+mailarc – Lizenz- und Nutzungshinweis
+=====================================
+
+Diese Software ("mailarc") wird von Microtronix bereitgestellt.
+
+Die Nutzung erfolgt im Rahmen der mit Microtronix getroffenen Vereinbarungen.
+mailarc greift ausschließlich lesend (read-only) auf IMAP-Postfächer zu und
+speichert importierte Daten lokal.
+
+Die Software wird ohne Gewähr ("as is") bereitgestellt; es wird keine Haftung
+für mittelbare oder unmittelbare Schäden übernommen, die aus der Nutzung
+entstehen.
+
+Mit dem Fortfahren der Installation bestätigst du, diese Hinweise zur Kenntnis
+genommen zu haben.
+
+(Platzhaltertext – bei Bedarf durch die offizielle Lizenz ersetzen.)

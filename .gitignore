@@ -4,6 +4,11 @@ __pycache__/
 *.egg-info/
 .venv/
 
+# macOS-Build-Artefakte
+/build/
+/dist/
+packaging/macos/assets/
+
 # Daten/Backups (enthalten potenziell echte E-Mails) niemals committen
 *.tgz
 *.tar
