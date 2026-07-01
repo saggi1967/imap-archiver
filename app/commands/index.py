@@ -14,8 +14,9 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from app import db, es, extract
+from app import es, extract
 from app.config import settings
+from app.storage import get_storage
 
 app = typer.Typer(help="Mails suchoptimal nach Elasticsearch indexieren")
 console = Console()
@@ -33,9 +34,9 @@ def init() -> None:
         console.print(f"[yellow]Index [bold]{settings.ES_INDEX}[/] existiert — Mapping aktualisiert.[/]")
 
 
-def _actions(conn, reindex: bool):
+def _actions(storage, reindex: bool):
     """Erzeugt Bulk-Actions aus den (noch nicht) indexierten Mails."""
-    for row in db.iter_emails_for_index(conn, reindex):
+    for row in storage.iter_emails_for_index(reindex):
         try:
             doc = extract.extract_document(row)
         except Exception as exc:  # defekte Mail überspringen, nicht abbrechen
@@ -74,9 +75,8 @@ def run(
         console.print(f"[green]Index [bold]{settings.ES_INDEX}[/] neu angelegt.[/]")
     es.sync_mapping(client, settings.ES_INDEX)
 
-    with db.connect(settings.DB_PATH) as conn:
-        db.init_schema(conn)
-        total = db.count_pending_index(conn, reindex)
+    with get_storage() as storage:
+        total = storage.count_pending_index(reindex)
         if total == 0:
             console.print("[green]✓[/] Nichts zu tun — alle Mails sind bereits indexiert.")
             return
@@ -104,7 +104,7 @@ def run(
         id_map: dict[str, int] = {}
 
         def actions():
-            for action in _actions(conn, reindex):
+            for action in _actions(storage, reindex):
                 id_map[action["_id"]] = action.pop("_db_id")
                 yield action
 
@@ -124,8 +124,8 @@ def run(
                     console.print(f"[red]Fehler {es_id}: {info}[/]")
 
         now = datetime.now(timezone.utc).isoformat()
-        db.mark_indexed(conn, done_ids, now)
-        conn.commit()
+        storage.mark_indexed(done_ids, now)
+        storage.commit()
         client.indices.refresh(index=settings.ES_INDEX)
 
     console.print(f"\n[bold green]✓[/] {ok} indexiert" + (f", [red]{failed} Fehler[/]" if failed else ""))

@@ -11,8 +11,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from app import db, es, extract
+from app import es, extract
 from app.config import settings
+from app.storage import get_storage
 
 _MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
 _WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -446,15 +447,14 @@ def download(
     ),
 ) -> None:
     """Speichert die Anhänge einer gefundenen Mail als Dateien (Quelle: lokale DB)."""
-    with db.connect(settings.DB_PATH) as conn:
-        db.init_schema(conn)
+    with get_storage() as storage:
         row = None
         # Bevorzugt mailbox:uidvalidity:uid; uid/uidvalidity sind die letzten zwei Teile.
         parts = doc_id.rsplit(":", 2)
         if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
-            row = db.get_raw_by_ref(conn, parts[0], int(parts[1]), int(parts[2]))
+            row = storage.get_raw_by_ref(parts[0], int(parts[1]), int(parts[2]))
         if row is None:
-            row = db.get_raw_by_message_id(conn, doc_id)
+            row = storage.get_raw_by_message_id(doc_id)
 
     if row is None:
         console.print(f"[red]Keine Mail zu '{doc_id}' in der DB gefunden.[/]")

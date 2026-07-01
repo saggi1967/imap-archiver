@@ -1,0 +1,53 @@
+"""Abstraktes Storage-Backend: eine Schnittstelle, mehrere Implementierungen.
+
+`SqliteStorage` (heute, Default) und später `RestStorage` erfüllen dieses Protokoll.
+Alle Aufrufer sprechen nur noch ``storage.…`` statt roher DB-Zugriffe — der Wechsel
+zwischen lokaler SQLite und zentralem REST-Service wird damit eine reine Config-Frage
+(siehe VORSCHLAG-zentrale-speicherung.md, Phase 4).
+
+Benutzung immer als Kontextmanager, damit Verbindung/Transaktion (SQLite) bzw.
+HTTP-Client (REST) sauber auf- und abgebaut werden::
+
+    with get_storage() as storage:
+        storage.upsert_mailbox("INBOX")
+        storage.commit()
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator, Mapping
+from typing import Any, Protocol
+
+# Eine Ergebniszeile ist Mapping-artig (SQLite: sqlite3.Row, REST: dict) — beide
+# unterstützen row["spalte"]. Aufrufer greifen ausschließlich per Schlüssel zu.
+Row = Mapping[str, Any]
+
+
+class StorageBackend(Protocol):
+    """Vertragspunkt für alle Persistenz-Operationen der CLI."""
+
+    # -- Sitzungs-/Transaktions-Lebenszyklus ------------------------------
+    def __enter__(self) -> "StorageBackend": ...
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool | None: ...
+    def commit(self) -> None:
+        """Zwischen-Commit (SQLite: Transaktion; REST: no-op, da HTTP atomar)."""
+        ...
+
+    # -- Ordner (mailbox) -------------------------------------------------
+    def get_mailbox(self, name: str) -> Row | None: ...
+    def upsert_mailbox(self, name: str) -> int: ...
+    def reset_mailbox_state(self, mailbox_id: int, uidvalidity: int) -> None: ...
+    def reset_mailbox_full(self, mailbox_id: int) -> None: ...
+    def update_mailbox_state(
+        self, mailbox_id: int, uidvalidity: int, last_uid: int, imported_at: str
+    ) -> None: ...
+    def list_mailboxes_with_counts(self) -> list[Row]: ...
+
+    # -- Mails (email) ----------------------------------------------------
+    def insert_email(self, **fields: Any) -> bool: ...
+    def count_pending_index(self, reindex: bool) -> int: ...
+    def iter_emails_for_index(self, reindex: bool) -> Iterator[Row]: ...
+    def mark_indexed(self, email_ids: list[int], indexed_at: str) -> None: ...
+    def get_raw_by_ref(self, mailbox: str, uidvalidity: int, uid: int) -> Row | None: ...
+    def get_raw_by_message_id(self, message_id: str) -> Row | None: ...
+    def fetch_email_stats_rows(self) -> list[Row]: ...

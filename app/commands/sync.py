@@ -12,8 +12,9 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from app import db, sync
+from app import sync
 from app.config import settings
+from app.storage import get_storage
 
 app = typer.Typer(help="Mails per IMAP importieren (read-only)")
 console = Console()
@@ -73,16 +74,12 @@ def run(
         f"→ [cyan]{settings.DB_PATH}[/]  ({len(folders)} Ordner)\n"
     )
 
-    with db.connect(settings.DB_PATH) as conn:
-        db.init_schema(conn)
+    with get_storage() as storage:
         if full:
             for name in folders:
-                mailbox_id = db.upsert_mailbox(conn, name)
-                conn.execute(
-                    "UPDATE mailbox SET last_uid = 0, uidvalidity = NULL WHERE id = ?",
-                    (mailbox_id,),
-                )
-            conn.commit()
+                mailbox_id = storage.upsert_mailbox(name)
+                storage.reset_mailbox_full(mailbox_id)
+            storage.commit()
 
         progress = Progress(
             SpinnerColumn(style="cyan"),
@@ -109,7 +106,7 @@ def run(
             progress.update(state["task"], advance=n)
 
         with progress:
-            results = sync.sync_folders(conn, folders, on_start=on_start, on_tick=on_tick)
+            results = sync.sync_folders(storage, folders, on_start=on_start, on_tick=on_tick)
 
     console.print()
     console.print(_summary(results))

@@ -1,6 +1,5 @@
 """Sync-Logik: Initial-Voll-Import bzw. Inkrement seit letztem Import."""
 
-import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -10,7 +9,8 @@ from email.utils import parsedate_to_datetime
 
 from imapclient import IMAPClient
 
-from app import db, imap
+from app import imap
+from app.storage.base import StorageBackend
 
 # IMAP-FETCH-Items: Rohnachricht, Servergröße und interne Zustellzeit.
 FETCH_ITEMS = [b"RFC822", b"RFC822.SIZE", b"INTERNALDATE"]
@@ -59,19 +59,19 @@ def _chunks(seq: list, size: int):
 
 
 def sync_folder(
-    conn: sqlite3.Connection,
+    storage: StorageBackend,
     client: IMAPClient,
     folder: str,
     on_start: Callable[[str, str, int], None] | None = None,
     on_tick: Callable[[int], None] | None = None,
 ) -> FolderResult:
-    mailbox_id = db.upsert_mailbox(conn, folder)
-    stored = db.get_mailbox(conn, folder)
+    mailbox_id = storage.upsert_mailbox(folder)
+    stored = storage.get_mailbox(folder)
     uidvalidity = imap.examine(client, folder)
 
     # UIDVALIDITY-Wechsel => bisherige UIDs ungültig => Voll-Resync.
     if stored["uidvalidity"] is not None and stored["uidvalidity"] != uidvalidity:
-        db.reset_mailbox_state(conn, mailbox_id, uidvalidity)
+        storage.reset_mailbox_state(mailbox_id, uidvalidity)
         last_uid = 0
         mode = "resync"
     else:
@@ -96,8 +96,7 @@ def sync_folder(
             raw = data[b"RFC822"]
             now = datetime.now(timezone.utc).isoformat()
             internaldate = data[b"INTERNALDATE"]
-            ok = db.insert_email(
-                conn,
+            ok = storage.insert_email(
                 mailbox_id=mailbox_id,
                 uid=uid,
                 uidvalidity=uidvalidity,
@@ -113,14 +112,14 @@ def sync_folder(
             if on_tick:
                 on_tick(1)
 
-    db.update_mailbox_state(
-        conn, mailbox_id, uidvalidity, max_uid, datetime.now(timezone.utc).isoformat()
+    storage.update_mailbox_state(
+        mailbox_id, uidvalidity, max_uid, datetime.now(timezone.utc).isoformat()
     )
     return FolderResult(folder, mode, len(uids), inserted, skipped, max_uid)
 
 
 def sync_folders(
-    conn: sqlite3.Connection,
+    storage: StorageBackend,
     folders: list[str],
     on_start: Callable[[str, str, int], None] | None = None,
     on_tick: Callable[[int], None] | None = None,
@@ -128,6 +127,6 @@ def sync_folders(
     results: list[FolderResult] = []
     with imap.imap_session() as client:
         for folder in folders:
-            results.append(sync_folder(conn, client, folder, on_start, on_tick))
-            conn.commit()
+            results.append(sync_folder(storage, client, folder, on_start, on_tick))
+            storage.commit()
     return results

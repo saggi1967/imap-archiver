@@ -80,6 +80,18 @@ def reset_mailbox_state(conn: sqlite3.Connection, mailbox_id: int, uidvalidity: 
     )
 
 
+def reset_mailbox_full(conn: sqlite3.Connection, mailbox_id: int) -> None:
+    """Voll-Import (`sync run --full`): Sync-Stand komplett verwerfen.
+
+    Anders als ``reset_mailbox_state`` ist die neue UIDVALIDITY hier noch nicht
+    bekannt (sie wird beim nächsten EXAMINE gesetzt) → auf NULL zurücksetzen.
+    """
+    conn.execute(
+        "UPDATE mailbox SET last_uid = 0, uidvalidity = NULL WHERE id = ?",
+        (mailbox_id,),
+    )
+
+
 def update_mailbox_state(
     conn: sqlite3.Connection, mailbox_id: int, uidvalidity: int, last_uid: int, imported_at: str
 ) -> None:
@@ -87,6 +99,27 @@ def update_mailbox_state(
         "UPDATE mailbox SET uidvalidity = ?, last_uid = ?, last_import_at = ? WHERE id = ?",
         (uidvalidity, last_uid, imported_at, mailbox_id),
     )
+
+
+def list_mailboxes_with_counts(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Alle Ordner mit Sync-Stand und Anzahl gespeicherter Mails (für `status show`)."""
+    return conn.execute(
+        """
+        SELECT m.name, m.uidvalidity, m.last_uid, m.last_import_at,
+               COUNT(e.id) AS cnt
+        FROM mailbox m
+        LEFT JOIN email e ON e.mailbox_id = m.id
+        GROUP BY m.id
+        ORDER BY m.name
+        """
+    ).fetchall()
+
+
+def fetch_email_stats_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Roh-Felder aller Mails für die Statistik-Aggregation (für `stats show`)."""
+    return conn.execute(
+        "SELECT date_header, internaldate, from_addr, subject, size FROM email"
+    ).fetchall()
 
 
 def count_pending_index(conn: sqlite3.Connection, reindex: bool) -> int:

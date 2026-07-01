@@ -7,8 +7,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from app import db
-from app.config import settings
+from app.storage import get_storage
 
 app = typer.Typer(help="Statistiken zu den geladenen Mails")
 console = Console()
@@ -66,11 +65,8 @@ def show(
     top: int = typer.Option(10, "--top", "-n", help="Anzahl Top-Absender / größte Mails."),
 ) -> None:
     """Zeigt farbige Statistiken (Jahre, Absender, Wochentage, Größen …)."""
-    with db.connect(settings.DB_PATH) as conn:
-        db.init_schema(conn)
-        rows = conn.execute(
-            "SELECT date_header, internaldate, from_addr, subject, size FROM email"
-        ).fetchall()
+    with get_storage() as storage:
+        rows = storage.fetch_email_stats_rows()
 
     if not rows:
         console.print("[yellow]Keine Mails in der Datenbank. Erst `mailarc sync run` ausführen.[/]")
