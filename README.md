@@ -232,6 +232,32 @@ imap_archiver/
 └── .env.example
 ```
 
+## Zentrale Speicherung (optional)
+
+Standardmäßig legt jede CLI-Instanz ihre Mails lokal in einer eigenen
+SQLite-Datei ab. Alternativ können **mehrere Instanzen in eine gemeinsame
+zentrale Datenbank** sammeln — hinter dem separaten REST-Service
+[`mailarc-server`](../mailarc-server) (FastAPI + Postgres).
+
+Das Backend ist umschaltbar, ohne dass sich an der Bedienung etwas ändert:
+
+```bash
+# in der .env:
+STORAGE_BACKEND=rest
+REST_BASE_URL=https://archiv.firma.example
+REST_API_TOKEN=dein-token
+```
+
+Alle Befehle (`sync`, `index`, `status`, `stats`, `search download`) arbeiten
+dann gegen den zentralen Service statt gegen die lokale SQLite-Datei. Der Sync
+lädt die Mails in **200er-Batches** als asynchrone Jobs hoch und pollt den
+Fortschritt; die Idempotenz `(Ordner, UIDVALIDITY, UID)` verhindert Duplikate,
+sodass mehrere Instanzen denselben Ordner gefahrlos parallel abholen können.
+
+Details zu Vertrag, Nebenläufigkeit und Betrieb: siehe
+[`VORSCHLAG-zentrale-speicherung.md`](VORSCHLAG-zentrale-speicherung.md) und das
+[`mailarc-server`](../mailarc-server)-README.
+
 ## Lizenz
 
 Proprietär / intern – © Microtronix. Keine Weitergabe ohne Freigabe.
