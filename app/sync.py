@@ -87,6 +87,7 @@ def sync_folder(
     max_uid = last_uid
     for chunk in _chunks(uids, BATCH):
         response = client.fetch(chunk, FETCH_ITEMS)
+        batch: list[dict] = []
         for uid in chunk:
             data = response.get(uid)
             if not data:
@@ -94,23 +95,26 @@ def sync_folder(
                     on_tick(1)
                 continue
             raw = data[b"RFC822"]
-            now = datetime.now(timezone.utc).isoformat()
             internaldate = data[b"INTERNALDATE"]
-            ok = storage.insert_email(
-                mailbox_id=mailbox_id,
-                uid=uid,
-                uidvalidity=uidvalidity,
-                size=data[b"RFC822.SIZE"],
-                internaldate=internaldate.isoformat() if internaldate else None,
-                raw=raw,
-                imported_at=now,
-                **_parse_headers(raw),
+            batch.append(
+                {
+                    "uid": uid,
+                    "uidvalidity": uidvalidity,
+                    "size": data[b"RFC822.SIZE"],
+                    "internaldate": internaldate.isoformat() if internaldate else None,
+                    "raw": raw,
+                    **_parse_headers(raw),
+                }
             )
-            inserted += ok
-            skipped += not ok
             max_uid = max(max_uid, uid)
             if on_tick:
                 on_tick(1)
+
+        # Chunkweise persistieren: SQLite lokal in einer Transaktion, REST als ein
+        # async Sync-Job pro Chunk (200er-Batch aus Vorschlag 6.2).
+        ins, skip = storage.store_email_batch(mailbox_id, folder, uidvalidity, batch)
+        inserted += ins
+        skipped += skip
 
     storage.update_mailbox_state(
         mailbox_id, uidvalidity, max_uid, datetime.now(timezone.utc).isoformat()

@@ -1,7 +1,3 @@
-from collections import Counter
-from datetime import datetime
-from email.utils import parseaddr
-
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -23,17 +19,6 @@ def _human(n: int) -> str:
             return f"{f:.0f} {unit}" if unit == "B" else f"{f:.1f} {unit}"
         f /= 1024
     return f"{f:.1f} TB"
-
-
-def _parse_dt(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        dt = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    # Zeitzone abstreifen, damit aware/naive Werte vergleichbar bleiben.
-    return dt.replace(tzinfo=None)
 
 
 def _bar(value: int, maxv: int, width: int = 32, style: str = "cyan") -> str:
@@ -66,52 +51,34 @@ def show(
 ) -> None:
     """Zeigt farbige Statistiken (Jahre, Absender, Wochentage, Größen …)."""
     with get_storage() as storage:
-        rows = storage.fetch_email_stats_rows()
+        s = storage.stats_summary(top)
 
-    if not rows:
+    if s.total == 0:
         console.print("[yellow]Keine Mails in der Datenbank. Erst `mailarc sync run` ausführen.[/]")
         return
 
-    years: Counter[int] = Counter()
-    months: Counter[int] = Counter()
-    weekdays: Counter[int] = Counter()
-    senders: Counter[str] = Counter()
-    total_size = 0
-    dts: list[datetime] = []
-
-    for r in rows:
-        dt = _parse_dt(r["date_header"]) or _parse_dt(r["internaldate"])
-        if dt:
-            years[dt.year] += 1
-            months[dt.month] += 1
-            weekdays[dt.weekday()] += 1
-            dts.append(dt)
-        name, addr = parseaddr(r["from_addr"] or "")
-        senders[(addr or name or "‹unbekannt›").lower()] += 1
-        total_size += r["size"] or 0
-
     # ── Übersicht ────────────────────────────────────────────────────────────
     span = ""
-    if dts:
-        span = f"{min(dts):%d.%m.%Y} – {max(dts):%d.%m.%Y}"
+    if s.span_start and s.span_end:
+        span = f"{s.span_start:%d.%m.%Y} – {s.span_end:%d.%m.%Y}"
     overview = (
-        f"[bold]Mails gesamt:[/]   [green]{len(rows):,}[/]\n"
-        f"[bold]Gesamtgröße:[/]    [cyan]{_human(total_size)}[/]\n"
-        f"[bold]Ø Größe:[/]        {_human(total_size // max(len(rows), 1))}\n"
+        f"[bold]Mails gesamt:[/]   [green]{s.total:,}[/]\n"
+        f"[bold]Gesamtgröße:[/]    [cyan]{_human(s.total_size)}[/]\n"
+        f"[bold]Ø Größe:[/]        {_human(s.total_size // max(s.total, 1))}\n"
         f"[bold]Zeitraum:[/]       {span or '–'}\n"
-        f"[bold]Absender:[/]       [magenta]{len(senders):,}[/] verschiedene"
+        f"[bold]Absender:[/]       [magenta]{s.distinct_senders:,}[/] verschiedene"
     ).replace(",", ".")
     console.print(Panel(overview, title="📊 Übersicht", border_style="bright_blue", expand=False))
 
     # ── Mails pro Jahr ───────────────────────────────────────────────────────
-    if years:
-        maxv = max(years.values())
+    if s.per_year:
+        maxv = max(s.per_year.values())
         t = Table(title="Mails pro Jahr", header_style="bold magenta", expand=False)
         t.add_column("Jahr", style="bold")
         t.add_column("Anzahl", justify="right")
         t.add_column("Verteilung", ratio=1)
-        for year in sorted(years):
-            cnt = years[year]
+        for year in sorted(s.per_year):
+            cnt = s.per_year[year]
             t.add_row(
                 str(year),
                 f"[{_color_scale(cnt, maxv)}]{cnt}[/]",
@@ -120,35 +87,36 @@ def show(
         console.print(t)
 
     # ── Top-Absender ─────────────────────────────────────────────────────────
-    maxs = senders.most_common(1)[0][1]
-    t = Table(title=f"Top {top} Absender", header_style="bold magenta", expand=False)
-    t.add_column("Absender", style="cyan", no_wrap=True)
-    t.add_column("Mails", justify="right")
-    t.add_column("Anteil", justify="right", style="dim")
-    for addr, cnt in senders.most_common(top):
-        t.add_row(addr, f"[{_color_scale(cnt, maxs)}]{cnt}[/]", f"{cnt / len(rows) * 100:.1f} %")
-    console.print(t)
+    if s.top_senders:
+        maxs = s.top_senders[0][1]
+        t = Table(title=f"Top {top} Absender", header_style="bold magenta", expand=False)
+        t.add_column("Absender", style="cyan", no_wrap=True)
+        t.add_column("Mails", justify="right")
+        t.add_column("Anteil", justify="right", style="dim")
+        for addr, cnt in s.top_senders:
+            t.add_row(addr, f"[{_color_scale(cnt, maxs)}]{cnt}[/]", f"{cnt / s.total * 100:.1f} %")
+        console.print(t)
 
     # ── Wochentage ───────────────────────────────────────────────────────────
-    if weekdays:
-        maxw = max(weekdays.values())
+    if s.per_weekday:
+        maxw = max(s.per_weekday.values())
         t = Table(title="Verteilung nach Wochentag", header_style="bold magenta", expand=False)
         t.add_column("Tag", style="bold")
         t.add_column("Anzahl", justify="right")
         t.add_column("Verteilung", ratio=1)
         for d in range(7):
-            cnt = weekdays.get(d, 0)
+            cnt = s.per_weekday.get(d, 0)
             t.add_row(_WEEKDAYS[d], str(cnt), _bar(cnt, maxw, style=_color_scale(cnt, maxw)))
         console.print(t)
 
     # ── Aktivste Monate (alle Jahre zusammengefasst) ─────────────────────────
-    if months:
-        maxm = max(months.values())
+    if s.per_month:
+        maxm = max(s.per_month.values())
         t = Table(title="Verteilung nach Monat", header_style="bold magenta", expand=False)
         t.add_column("Monat", style="bold")
         t.add_column("Anzahl", justify="right")
         t.add_column("Verteilung", ratio=1)
         for m in range(1, 13):
-            cnt = months.get(m, 0)
+            cnt = s.per_month.get(m, 0)
             t.add_row(_MONTHS[m - 1], str(cnt), _bar(cnt, maxm, style=_color_scale(cnt, maxm)))
         console.print(t)

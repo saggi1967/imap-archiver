@@ -7,11 +7,22 @@ der ``db.*``-Funktionen; nur die Connection ist jetzt hinter der Schnittstelle v
 from __future__ import annotations
 
 import sqlite3
+from collections import Counter
 from collections.abc import Iterator
-from typing import Any
+from datetime import datetime, timezone
+from email.utils import parseaddr
 
 from app import db
-from app.storage.base import Row
+from app.storage.base import Row, StatsSummary
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).replace(tzinfo=None)
+    except ValueError:
+        return None
 
 
 class SqliteStorage:
@@ -70,8 +81,20 @@ class SqliteStorage:
         return db.list_mailboxes_with_counts(self._c)
 
     # -- Mails ------------------------------------------------------------
-    def insert_email(self, **fields: Any) -> bool:
-        return db.insert_email(self._c, **fields)
+    def store_email_batch(
+        self,
+        mailbox_id: int,
+        mailbox_name: str,
+        uidvalidity: int,
+        emails: list[dict],
+    ) -> tuple[int, int]:
+        now = datetime.now(timezone.utc).isoformat()
+        inserted = skipped = 0
+        for e in emails:
+            ok = db.insert_email(self._c, mailbox_id=mailbox_id, imported_at=now, **e)
+            inserted += int(ok)
+            skipped += int(not ok)
+        return inserted, skipped
 
     def count_pending_index(self, reindex: bool) -> int:
         return db.count_pending_index(self._c, reindex)
@@ -88,5 +111,35 @@ class SqliteStorage:
     def get_raw_by_message_id(self, message_id: str) -> Row | None:
         return db.get_raw_by_message_id(self._c, message_id)
 
-    def fetch_email_stats_rows(self) -> list[Row]:
-        return db.fetch_email_stats_rows(self._c)
+    def stats_summary(self, top: int) -> StatsSummary:
+        """Aggregiert lokal — spiegelt die frühere Auswertung aus stats.py."""
+        rows = db.fetch_email_stats_rows(self._c)
+        years: Counter[int] = Counter()
+        months: Counter[int] = Counter()
+        weekdays: Counter[int] = Counter()
+        senders: Counter[str] = Counter()
+        total_size = 0
+        dts: list[datetime] = []
+
+        for r in rows:
+            dt = _parse_dt(r["date_header"]) or _parse_dt(r["internaldate"])
+            if dt:
+                years[dt.year] += 1
+                months[dt.month] += 1
+                weekdays[dt.weekday()] += 1
+                dts.append(dt)
+            name, addr = parseaddr(r["from_addr"] or "")
+            senders[(addr or name or "‹unbekannt›").lower()] += 1
+            total_size += r["size"] or 0
+
+        return StatsSummary(
+            total=len(rows),
+            total_size=total_size,
+            span_start=min(dts) if dts else None,
+            span_end=max(dts) if dts else None,
+            distinct_senders=len(senders),
+            per_year=dict(years),
+            per_month=dict(months),
+            per_weekday=dict(weekdays),
+            top_senders=senders.most_common(top),
+        )

@@ -20,6 +20,17 @@ class Settings(BaseSettings):
     # Pfad zur lokalen SQLite-Datei
     DB_PATH: str = "mailarc.db"
 
+    # Storage-Backend: "sqlite" (lokal, Default) oder "rest" (zentraler mailarc-server).
+    STORAGE_BACKEND: str = "sqlite"
+    REST_BASE_URL: str = "http://localhost:8000"
+    REST_API_TOKEN: str = ""
+    REST_VERIFY_CERTS: bool = True
+    REST_TIMEOUT: float = 30.0          # HTTP-Timeout je Request (Upload/GET)
+    REST_BATCH: int = 200               # Seitengröße für index_pending
+    REST_POLL_START: float = 0.5        # Sync-Job-Poll: Start-Backoff (s)
+    REST_POLL_MAX: float = 5.0          # Sync-Job-Poll: max. Backoff (s)
+    REST_POLL_DEADLINE: float = 600.0   # max. Wartezeit auf einen Sync-Job (s)
+
     # Elasticsearch (prod_stack). Server 9.x, Basic-Auth.
     ES_HOST: str = "http://localhost:9200"
     ES_USER: str = "elastic"
