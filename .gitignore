@@ -4,6 +4,15 @@ __pycache__/
 *.egg-info/
 .venv/
 
+# macOS
+.DS_Store
+
+# Lokale Arbeits-/Datenverzeichnisse (echte Mails, DB-Dumps, Anhänge) niemals committen
+/tmp/
+/bilder/
+image001.jpg
+*.jpg
+
 # macOS-Build-Artefakte
 /build/
 /dist/
