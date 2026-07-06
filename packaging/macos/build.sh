@@ -95,8 +95,9 @@ cp -R "$BUILD/pyi/$APP_NAME/." "$PKGROOT/usr/local/$APP_NAME/"
 
 SCRIPTS="$BUILD/scripts"
 mkdir -p "$SCRIPTS"
-cp "$HERE/scripts/postinstall" "$SCRIPTS/postinstall"
-chmod +x "$SCRIPTS/postinstall"
+# preinstall (räumt alte Installation weg) + postinstall (PATH-Symlink)
+cp "$HERE/scripts/preinstall" "$HERE/scripts/postinstall" "$SCRIPTS/"
+chmod +x "$SCRIPTS/preinstall" "$SCRIPTS/postinstall"
 
 pkgbuild \
   --root "$PKGROOT" \

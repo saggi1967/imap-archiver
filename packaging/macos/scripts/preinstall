@@ -1,0 +1,18 @@
+#!/bin/bash
+# Entfernt eine ggf. vorhandene Installation VOLLSTÄNDIG, bevor die neue
+# Version ausgerollt wird.
+#
+# Hintergrund: macOS' `installer` legt beim Upgrade nur die neue Payload
+# darüber und räumt alte Dateien nicht zuverlässig auf. Bei einem
+# PyInstaller-`--onedir`-Build (viele Dateien unter _internal/) bleiben so
+# veraltete Dateien liegen und können die neue Version überlagern
+# -> die "alte Version wird nicht überschrieben".
+#
+# Durch das Leeren des Zielverzeichnisses vor der Installation entsteht immer
+# ein sauberer Stand.
+set -e
+
+rm -rf "/usr/local/mailarc"
+rm -f "/usr/local/bin/mailarc"
+
+exit 0
