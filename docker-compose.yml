@@ -1,0 +1,77 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.0.0
+    container_name: imap-archiver-es
+    environment:
+      # Single-Node-Cluster, passend zur lokalen Nutzung durch `mailarc index/search`
+      - discovery.type=single-node
+      - node.name=imap-archiver-es
+      - cluster.name=imap-archiver
+      # Security aktiv lassen -> Basic-Auth (elastic / ELASTIC_PASSWORD),
+      # aber TLS auf der HTTP-Schicht aus, damit ES_HOST=http://localhost:9200 passt.
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      # Passwort des `elastic`-Users; muss mit ES_PASSWORD in deiner .env übereinstimmen.
+      - ELASTIC_PASSWORD=${ES_PASSWORD:-changeme}
+      # Heap an deine Maschine anpassen (hier 1 GB).
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:${ES_PASSWORD:-changeme} http://localhost:9200/_cluster/health | grep -q '\"status\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  # Setzt einmalig das Passwort des internen `kibana_system`-Users,
+  # damit Kibana sich nicht mit dem `elastic`-Superuser anmelden muss.
+  es-setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.0.0
+    container_name: imap-archiver-es-setup
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTIC_PASSWORD=${ES_PASSWORD:-changeme}
+      - KIBANA_PASSWORD=${KIBANA_PASSWORD:-changeme}
+    command:
+      - bash
+      - -c
+      - |
+        echo "Setze Passwort fuer kibana_system ...";
+        until curl -s -u "elastic:$${ELASTIC_PASSWORD}" -X POST http://elasticsearch:9200/_security/user/kibana_system/_password -H "Content-Type: application/json" -d "{\"password\":\"$${KIBANA_PASSWORD}\"}" | grep -q "^{}"; do
+          echo "  ... warte auf Elasticsearch";
+          sleep 5;
+        done;
+        echo "kibana_system-Passwort gesetzt.";
+    restart: "no"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:9.0.0
+    container_name: imap-archiver-kibana
+    depends_on:
+      es-setup:
+        condition: service_completed_successfully
+    environment:
+      - SERVER_NAME=imap-archiver-kibana
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD:-changeme}
+    ports:
+      - "5601:5601"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  es-data:

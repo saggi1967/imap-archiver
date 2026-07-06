@@ -83,6 +83,38 @@ cp .env.example .env        # Zugangsdaten eintragen (siehe unten)
 
 Danach steht der Befehl **`mailarc`** zur Verfügung (solange die venv aktiv ist).
 
+### Elasticsearch & Kibana per Docker
+
+Wer keinen eigenen Elasticsearch-Server betreibt, startet den kompletten
+Suchstack lokal mit der mitgelieferten [`docker-compose.yml`](docker-compose.yml):
+
+```bash
+# In der .env ein Passwort setzen (sonst Fallback "changeme"):
+#   ES_PASSWORD=deinPasswort
+#   KIBANA_PASSWORD=einAnderesPasswort   # optional
+
+docker compose up -d
+docker compose logs -f kibana       # warten bis Status "available"
+```
+
+Danach erreichbar:
+
+| Dienst | URL | Login |
+|---|---|---|
+| Elasticsearch | <http://localhost:9200> | `elastic` / `ES_PASSWORD` |
+| Kibana | <http://localhost:5601> | `elastic` / `ES_PASSWORD` |
+
+Der Stack läuft als **Single-Node** mit aktivierter Security (Basic-Auth), aber
+ohne TLS auf der HTTP-Schicht – passend zum Default `ES_HOST=http://localhost:9200`.
+Daten liegen im Docker-Volume `es-data` und bleiben über Neustarts erhalten.
+In Kibana lässt sich unter **Discover** eine Data View auf den Index `emails`
+anlegen, um die archivierten Mails durchzusehen.
+
+```bash
+docker compose down        # stoppen (Daten bleiben erhalten)
+docker compose down -v     # stoppen + Index-Daten löschen
+```
+
 ## Konfiguration
 
 Alle Einstellungen kommen aus Umgebungsvariablen bzw. einer `.env`-Datei
