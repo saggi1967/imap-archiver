@@ -82,7 +82,7 @@ def render(scale: int, version: str) -> Image.Image:
 
 def main() -> None:
     assets = sys.argv[1] if len(sys.argv) > 1 else "assets"
-    version = sys.argv[2] if len(sys.argv) > 2 else "2.0.0.0"
+    version = sys.argv[2] if len(sys.argv) > 2 else "2.1.0.0"
     os.makedirs(assets, exist_ok=True)
 
     render(1, version).convert("RGB").save(os.path.join(assets, "dmg-background.png"))

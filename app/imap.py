@@ -6,6 +6,7 @@ from collections.abc import Iterator
 
 from imapclient import IMAPClient
 
+from app.accounts import ensure_account_credentials
 from app.config import settings
 
 
@@ -23,6 +24,8 @@ def _ssl_context() -> ssl.SSLContext | None:
 
 @contextmanager
 def imap_session() -> Iterator[IMAPClient]:
+    # Bei zentralem Konto (ACCOUNT + rest) Zugangsdaten vom Server nachladen.
+    ensure_account_credentials()
     client = IMAPClient(
         settings.IMAP_HOST,
         port=settings.IMAP_PORT,

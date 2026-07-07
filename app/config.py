@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     IMAP_USER: str = ""
     IMAP_PASSWORD: str = ""
 
+    # Zentrales Konto (nur bei STORAGE_BACKEND=rest): Label eines auf dem Server
+    # hinterlegten IMAP-Zugangs. Ist es gesetzt, holt der Client Host/User/Passwort
+    # sowie die Ordnerliste vom Server statt aus den IMAP_*-Feldern hier.
+    ACCOUNT: str = ""
+
     # Komma-getrennte Liste der zu importierenden Ordner. Default: nur Posteingang.
     IMAP_FOLDERS: str = "INBOX"
 

@@ -4,7 +4,7 @@
 
 **Read-only IMAP-Mailarchiv mit Volltextsuche – von der Mailbox in SQLite und Elasticsearch.**
 
-[![Version](https://img.shields.io/badge/version-2.0.0.0-blue)](#)
+[![Version](https://img.shields.io/badge/version-2.1.0.0-blue)](#)
 [![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](#)
 [![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.x-005571?logo=elasticsearch&logoColor=white)](#)
 [![CLI](https://img.shields.io/badge/CLI-Typer%20%2B%20Rich-009688)](#)
@@ -285,6 +285,34 @@ dann gegen den zentralen Service statt gegen die lokale SQLite-Datei. Der Sync
 lädt die Mails in **200er-Batches** als asynchrone Jobs hoch und pollt den
 Fortschritt; die Idempotenz `(Ordner, UIDVALIDITY, UID)` verhindert Duplikate,
 sodass mehrere Instanzen denselben Ordner gefahrlos parallel abholen können.
+
+### Zentrale IMAP-Zugangsdaten (statt Passwort je `.env`)
+
+Bei `STORAGE_BACKEND=rest` müssen die IMAP-Zugangsdaten nicht mehr in jeder
+Client-`.env` stehen. Der Zugang wird einmal **interaktiv** angelegt und liegt
+danach **verschlüsselt** im zentralen Service:
+
+```bash
+mailarc account add        # fragt Host, Benutzer, Passwort (verdeckt), Ordner ab
+mailarc account list       # zeigt alle Konten (ohne Passwort)
+mailarc account remove <label>
+```
+
+In der `.env` dieses Clients genügt dann das Konto-Label — Host, Benutzer,
+Passwort und Ordnerliste kommen zur Laufzeit vom Server, die `IMAP_*`-Felder
+werden ignoriert:
+
+```bash
+STORAGE_BACKEND=rest
+REST_BASE_URL=https://archiv.firma.example
+REST_API_TOKEN=dein-token
+ACCOUNT=firma-stephan
+```
+
+Damit steht **kein IMAP-Passwort mehr lokal auf der Platte**. Der Client verbindet
+sich weiterhin selbst read-only zum IMAP; er holt die Zugangsdaten dafür nur kurz
+über HTTPS vom Service. Der Service braucht dazu einen `SECRET_KEY` (Fernet) —
+Details im [`mailarc-server`](../mailarc-server)-README.
 
 Details zu Vertrag, Nebenläufigkeit und Betrieb: siehe
 [`VORSCHLAG-zentrale-speicherung.md`](VORSCHLAG-zentrale-speicherung.md) und das

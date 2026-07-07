@@ -4,7 +4,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from app import __version__
-from app.commands import database, index, search, stats, status, sync
+from app.commands import account, database, index, search, stats, status, sync
 
 # Banner auf stderr, damit JSON-/Pipe-Ausgaben auf stdout sauber bleiben.
 _err = Console(stderr=True)
@@ -58,6 +58,7 @@ def main(
     show_banner()
 
 
+app.add_typer(account.app, name="account")
 app.add_typer(database.app, name="db")
 app.add_typer(sync.app, name="sync")
 app.add_typer(status.app, name="status")

@@ -13,6 +13,7 @@ from rich.progress import (
 from rich.table import Table
 
 from app import sync
+from app.accounts import ensure_account_credentials
 from app.config import settings
 from app.storage import get_storage
 
@@ -64,6 +65,8 @@ def run(
     ),
 ) -> None:
     """Importiert neue Mails. Ohne vorigen Stand = Voll-Import, sonst nur Neues seit letztem Lauf."""
+    # Zentrales Konto vorab auflösen, damit Host-Anzeige und Default-Ordner stimmen.
+    ensure_account_credentials()
     folders = folder or settings.folders
     if not folders:
         console.print("[bold red]Keine Ordner konfiguriert (IMAP_FOLDERS).[/]")
