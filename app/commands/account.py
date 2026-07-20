@@ -63,6 +63,75 @@ def add() -> None:
     )
 
 
+@app.command("update")
+def update(
+    name: str = typer.Argument(..., help="Label des zu ändernden Kontos"),
+    password_only: bool = typer.Option(
+        False,
+        "--password-only",
+        "-p",
+        help="Nur das Passwort ändern, alle anderen Felder unangetastet lassen.",
+    ),
+) -> None:
+    """Ändert ein zentrales Konto (z. B. Passwortwechsel).
+
+    Bei den Nicht-Passwort-Feldern ist der bisherige Wert vorbelegt — einfach
+    Enter drücken behält ihn. Das Passwort wird nur überschrieben, wenn ein
+    neues eingegeben wird (leer = unverändert).
+    """
+    _require_rest()
+    try:
+        rows = accounts.list_accounts()
+    except accounts.AccountsError as exc:
+        console.print(f"[bold red]Fehlgeschlagen:[/] {exc}")
+        raise typer.Exit(1) from exc
+
+    current = next((r for r in rows if r["name"] == name), None)
+    if current is None:
+        console.print(f"[bold red]Kein Konto mit Label[/] [cyan]{name}[/] [bold red]gefunden.[/]")
+        raise typer.Exit(1)
+
+    payload: dict = {}
+    if not password_only:
+        payload["imap_host"] = typer.prompt("IMAP-Host", default=current["imap_host"])
+        payload["imap_port"] = typer.prompt(
+            "IMAP-Port", default=current["imap_port"], type=int
+        )
+        payload["imap_ssl"] = typer.confirm(
+            "SSL/TLS verwenden?", default=bool(current.get("imap_ssl", True))
+        )
+        payload["imap_ssl_verify"] = typer.confirm(
+            "Zertifikat prüfen?", default=bool(current.get("imap_ssl_verify", True))
+        )
+        payload["imap_user"] = typer.prompt("IMAP-Benutzer", default=current["imap_user"])
+        payload["folders"] = typer.prompt(
+            "Ordner (Komma-getrennt)", default=current["folders"]
+        )
+
+    new_password = typer.prompt(
+        "Neues IMAP-Passwort (leer = unverändert)",
+        hide_input=True,
+        confirmation_prompt=True,
+        default="",
+        show_default=False,
+    )
+    if new_password:
+        payload["imap_password"] = new_password
+
+    if not payload:
+        console.print("[yellow]Nichts zu ändern.[/]")
+        raise typer.Exit(0)
+
+    try:
+        accounts.update_account(name, payload)
+    except accounts.AccountsError as exc:
+        console.print(f"[bold red]Fehlgeschlagen:[/] {exc}")
+        raise typer.Exit(1) from exc
+
+    what = "Passwort" if password_only else "Konto"
+    console.print(f"[bold green]✓[/] {what} für [cyan]{name}[/] aktualisiert.")
+
+
 @app.command("list")
 def list_() -> None:
     """Listet die zentral hinterlegten Konten (ohne Passwort)."""

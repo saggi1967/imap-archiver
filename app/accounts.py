@@ -62,6 +62,18 @@ def delete_account(name: str) -> None:
         _raise_for(r)
 
 
+def update_account(name: str, payload: dict) -> dict:
+    """Ändert ein bestehendes Konto teilweise (nur die übergebenen Felder).
+
+    Der Server (mailarc-server) muss dafür ``PATCH /accounts/{name}`` anbieten;
+    das Passwort wird nur überschrieben, wenn ``imap_password`` enthalten ist.
+    """
+    with _client() as c:
+        r = c.patch(f"/accounts/{name}", json=payload)
+        _raise_for(r)
+        return r.json()
+
+
 def get_credentials(name: str) -> dict:
     with _client() as c:
         r = c.get(f"/accounts/{name}/credentials")
