@@ -209,6 +209,7 @@ Trefferlisten zeigen eine **ID-Spalte** (`mailbox:uidvalidity:uid`), die direkt 
 
 | Befehl | Zweck |
 |---|---|
+| `mailarc account add` / `update` / `list` / `remove` | Zentrale IMAP-Konten verwalten (nur `STORAGE_BACKEND=rest`) |
 | `mailarc db init` | SQLite-Schema anlegen / migrieren |
 | `mailarc sync run` | Mails read-only importieren (Voll/inkrementell) |
 | `mailarc status show` / `folders` | Sync-Stand bzw. IMAP-Ordner anzeigen |
@@ -293,8 +294,10 @@ Client-`.env` stehen. Der Zugang wird einmal **interaktiv** angelegt und liegt
 danach **verschlüsselt** im zentralen Service:
 
 ```bash
-mailarc account add        # fragt Host, Benutzer, Passwort (verdeckt), Ordner ab
-mailarc account list       # zeigt alle Konten (ohne Passwort)
+mailarc account add                             # fragt Host, Benutzer, Passwort (verdeckt), Ordner ab
+mailarc account update <label>                  # Konto ändern (bisherige Werte vorbelegt)
+mailarc account update <label> --password-only  # nur das Passwort neu setzen
+mailarc account list                            # zeigt alle Konten (ohne Passwort)
 mailarc account remove <label>
 ```
 

@@ -25,3 +25,10 @@ packaging/macos/assets/
 *.zip
 *.eml
 *.mbox
+
+# .env-Backups (enthalten Secrets)
+.env.bak
+.env.*.bak
+
+# Separates Server-Repo (eigenes Git-Repo, liegt hier nur zur Entwicklung)
+/mailarc-server/
