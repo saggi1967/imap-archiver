@@ -15,7 +15,9 @@ def show_banner() -> None:
     body.append("📬  mailarc ", style="bold cyan")
     body.append(f"v{__version__}\n", style="bold yellow")
     body.append("Read-only IMAP-Mailarchiv  →  SQLite  →  Elasticsearch\n", style="white")
-    body.append("Import · Statistik · Volltextsuche · PDF-Anhänge · Download", style="dim")
+    body.append(
+        "Import · Statistik · Volltextsuche · PDF-Export · Anhänge-Download", style="dim"
+    )
     _err.print(Panel(body, border_style="bright_blue", expand=False, padding=(0, 2)))
 
 
@@ -39,7 +41,8 @@ app = typer.Typer(
         "mailarc sync run                 # Mails importieren (read-only)\n"
         "mailarc stats show               # Statistiken zu den Daten\n"
         "mailarc index run                # nach Elasticsearch indexieren\n"
-        "mailarc search query \"Rechnung\"   # Index durchsuchen"
+        "mailarc search query \"Rechnung\"   # Index durchsuchen\n"
+        "mailarc search pdf INBOX:7:42     # HTML-Mail als PDF exportieren"
     ),
 )
 
