@@ -1,9 +1,31 @@
+import os
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _env_files() -> tuple[str, ...]:
+    """Kandidaten-.env in aufsteigender Priorität (spätere überschreiben frühere).
+
+    So genügt **eine** globale Bootstrap-Datei (``~/.config/mailarc/config.env``)
+    für alle Verzeichnisse — eine projektlokale ``.env`` überschreibt sie bei
+    Bedarf, ``$MAILARC_ENV`` schlägt alles. Echte Umgebungsvariablen haben ohnehin
+    Vorrang vor jeder Datei. Nicht existierende Dateien ignoriert pydantic-settings.
+    """
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    config_home = Path(xdg) if xdg else Path.home() / ".config"
+    files = [
+        config_home / "mailarc" / "config.env",  # globaler Bootstrap (Basis)
+        Path(".env"),                             # projektlokal (überschreibt global)
+    ]
+    if os.environ.get("MAILARC_ENV"):             # expliziter Override (höchste)
+        files.append(Path(os.environ["MAILARC_ENV"]))
+    return tuple(str(f) for f in files)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=_env_files(), env_file_encoding="utf-8", extra="ignore"
     )
 
     # IMAP-Verbindung zum Firmenserver

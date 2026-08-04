@@ -58,6 +58,10 @@ INDEX_BODY = {
 
 
 def client() -> Elasticsearch:
+    # Bei zentralem Konto (ACCOUNT + rest) ES-Zugang/Index vom Server nachladen.
+    from app.accounts import ensure_central_config
+
+    ensure_central_config()
     kwargs: dict = {"basic_auth": (settings.ES_USER, settings.ES_PASSWORD)}
     if settings.ES_HOST.lower().startswith("https"):
         kwargs["verify_certs"] = settings.ES_VERIFY_CERTS

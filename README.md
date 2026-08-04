@@ -4,7 +4,7 @@
 
 **Read-only IMAP-Mailarchiv mit Volltextsuche – von der Mailbox in SQLite und Elasticsearch.**
 
-[![Version](https://img.shields.io/badge/version-2.1.0.0-blue)](#)
+[![Version](https://img.shields.io/badge/version-2.3.0.0-blue)](#)
 [![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](#)
 [![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.x-005571?logo=elasticsearch&logoColor=white)](#)
 [![CLI](https://img.shields.io/badge/CLI-Typer%20%2B%20Rich-009688)](#)
@@ -139,6 +139,11 @@ Alle Einstellungen kommen aus Umgebungsvariablen bzw. einer `.env`-Datei
 
 > 🔐 Passwörter gehören **ausschließlich** in die `.env` (per `.gitignore` vom Commit ausgeschlossen).
 
+> 💡 Die `.env` muss nicht je Verzeichnis liegen: `mailarc` liest zusätzlich eine
+> **globale** `~/.config/mailarc/config.env` (und `$MAILARC_ENV`). In Verbindung mit
+> `STORAGE_BACKEND=rest` reicht dort ein kleiner Bootstrap — der Rest liegt zentral
+> je Konto. Siehe [Zentrale Speicherung](#zentrale-speicherung-optional).
+
 ## Verwendung
 
 Typischer End-to-End-Ablauf:
@@ -210,6 +215,7 @@ Trefferlisten zeigen eine **ID-Spalte** (`mailbox:uidvalidity:uid`), die direkt 
 | Befehl | Zweck |
 |---|---|
 | `mailarc account add` / `update` / `list` / `remove` | Zentrale IMAP-Konten verwalten (nur `STORAGE_BACKEND=rest`) |
+| `mailarc account config` | Zentrale Zusatz-Config (ES-Ziel, Anhang-Optionen) je Konto setzen; `--from-env` migriert die lokale `.env` |
 | `mailarc db init` | SQLite-Schema anlegen / migrieren |
 | `mailarc sync run` | Mails read-only importieren (Voll/inkrementell) |
 | `mailarc status show` / `folders` | Sync-Stand bzw. IMAP-Ordner anzeigen |
@@ -316,6 +322,46 @@ Damit steht **kein IMAP-Passwort mehr lokal auf der Platte**. Der Client verbind
 sich weiterhin selbst read-only zum IMAP; er holt die Zugangsdaten dafür nur kurz
 über HTTPS vom Service. Der Service braucht dazu einen `SECRET_KEY` (Fernet) —
 Details im [`mailarc-server`](../mailarc-server)-README.
+
+### Komplette Konfiguration zentral + globale Bootstrap-`.env`
+
+Über die IMAP-Daten hinaus kann **die gesamte übrige Konfiguration** zentral je
+Konto liegen: **Elasticsearch-Ziel** (Host/User/Passwort/Index/Verify) und die
+**Anhang-Optionen**. Dann braucht die lokale `.env` nur noch den **Bootstrap** —
+*wo* der Server steht (`REST_BASE_URL`, `REST_API_TOKEN`) und *welches* Profil
+gilt (`ACCOUNT`). Alles andere lädt der Client zur Laufzeit.
+
+Damit nicht einmal dieser Bootstrap je Verzeichnis dupliziert werden muss, sucht
+`mailarc` die `.env` an mehreren Stellen (spätere überschreiben frühere):
+
+1. **global:** `~/.config/mailarc/config.env` (bzw. `$XDG_CONFIG_HOME/mailarc/config.env`)
+2. **projektlokal:** `./.env` im aktuellen Verzeichnis
+3. **explizit:** Datei aus `$MAILARC_ENV`
+
+Eine **einzige** globale Datei genügt also für alle Verzeichnisse. Vorlage:
+[`.env.bootstrap.example`](.env.bootstrap.example) → nach `~/.config/mailarc/config.env`
+kopieren.
+
+Die zentrale Zusatz-Config wird pro Konto gesetzt — am einfachsten übernimmt man
+die aktuell geladene lokale `.env` in einem Rutsch:
+
+```bash
+mailarc account config <label> --from-env          # ES_*/ATTACHMENT_* der aktiven .env zentral ablegen
+mailarc account config <label> --es-host https://es:9200 --es-user elastic --es-password -   # einzeln setzen ('-' = verdeckt)
+mailarc account list                               # vollständige Config je Konto (IMAP + ES + Anhang)
+mailarc account list --show-secrets                # inkl. Passwörter im Klartext (Debugging)
+```
+
+`account list` zeigt pro Konto **alle** Felder und markiert, was zentral **nicht**
+gesetzt ist (dann gilt der lokale Default). Ist z. B. ein ES-Host hinterlegt, aber
+kein ES-Passwort, weist die Ausgabe explizit darauf hin — das ist die häufigste
+Ursache für einen **Elasticsearch-401**. Passwörter sind standardmäßig maskiert
+(nur *gesetzt/nicht gesetzt*); `--show-secrets` gibt sie zum Debuggen im Klartext aus.
+
+Das ES-Passwort wird — wie das IMAP-Passwort — **Fernet-verschlüsselt** gespeichert.
+Felder, die zentral **nicht** gesetzt sind, lässt der Client auf seinem lokalen
+Default; gesetzte Felder überschreiben die lokale `.env`. Echte Umgebungsvariablen
+haben weiterhin Vorrang vor jeder Datei.
 
 Details zu Vertrag, Nebenläufigkeit und Betrieb: siehe
 [`VORSCHLAG-zentrale-speicherung.md`](VORSCHLAG-zentrale-speicherung.md) und das

@@ -81,24 +81,60 @@ def get_credentials(name: str) -> dict:
         return r.json()
 
 
+def get_config(name: str) -> dict:
+    """Vollständiges Profil (IMAP + ES + Anhang). Fällt bei älterem Server, der
+    ``/config`` noch nicht kennt, auf ``/credentials`` zurück (dann ohne ES-Felder).
+    """
+    with _client() as c:
+        r = c.get(f"/accounts/{name}/config")
+        if r.status_code == 404 and "config" in str(r.request.url):
+            r = c.get(f"/accounts/{name}/credentials")
+        _raise_for(r)
+        return r.json()
+
+
+# Feld → settings-Attribut für die zentral überschreibbare Zusatzkonfig. Wird nur
+# angewandt, wenn der Server einen Wert liefert (None = lokalen Default behalten).
+_CENTRAL_MAP = {
+    "es_host": "ES_HOST",
+    "es_user": "ES_USER",
+    "es_password": "ES_PASSWORD",
+    "es_index": "ES_INDEX",
+    "es_verify_certs": "ES_VERIFY_CERTS",
+    "attachment_text": "ATTACHMENT_TEXT",
+    "attachment_max_bytes": "ATTACHMENT_MAX_BYTES",
+    "attachment_max_chars": "ATTACHMENT_MAX_CHARS",
+}
+
 _applied = False
 
 
-def ensure_account_credentials() -> None:
-    """Überträgt die Zugangsdaten des gewählten Kontos einmalig in ``settings``.
+def ensure_central_config() -> None:
+    """Überträgt das gewählte Profil (IMAP + ES + Anhang) einmalig in ``settings``.
 
     No-op, wenn kein Konto gewählt ist oder das REST-Backend nicht aktiv ist —
-    dann gelten weiter die IMAP_*-Felder aus der lokalen .env.
+    dann gelten weiter die Werte aus der (globalen oder lokalen) .env. IMAP-Felder
+    werden immer gesetzt; ES-/Anhang-Felder nur, wenn der Server sie liefert.
     """
     global _applied
     if _applied or not settings.ACCOUNT or settings.STORAGE_BACKEND != "rest":
         return
-    creds = get_credentials(settings.ACCOUNT)
-    settings.IMAP_HOST = creds["imap_host"]
-    settings.IMAP_PORT = creds["imap_port"]
-    settings.IMAP_SSL = creds["imap_ssl"]
-    settings.IMAP_SSL_VERIFY = creds["imap_ssl_verify"]
-    settings.IMAP_USER = creds["imap_user"]
-    settings.IMAP_PASSWORD = creds["imap_password"]
-    settings.IMAP_FOLDERS = creds["folders"]
+    cfg = get_config(settings.ACCOUNT)
+    settings.IMAP_HOST = cfg["imap_host"]
+    settings.IMAP_PORT = cfg["imap_port"]
+    settings.IMAP_SSL = cfg["imap_ssl"]
+    settings.IMAP_SSL_VERIFY = cfg["imap_ssl_verify"]
+    settings.IMAP_USER = cfg["imap_user"]
+    settings.IMAP_PASSWORD = cfg["imap_password"]
+    settings.IMAP_FOLDERS = cfg["folders"]
+    for key, attr in _CENTRAL_MAP.items():
+        value = cfg.get(key)
+        if value is not None:
+            setattr(settings, attr, value)
     _applied = True
+
+
+# Rückwärtskompatibler Name für bestehende Aufrufer (imap.py, commands/sync.py):
+# lädt jetzt das komplette Profil, nicht mehr nur die IMAP-Credentials.
+def ensure_account_credentials() -> None:
+    ensure_central_config()
