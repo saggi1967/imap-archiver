@@ -5,6 +5,27 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung an [PEP 440](https://peps.python.org/pep-0440/).
 
+## [2.5.0.0] – 2026-08-04
+
+Schwerpunkt dieses Releases ist die **Erstinstallation „ready to use"**: ein
+Einrichtungs-Assistent und der macOS-Installer, der ihn anbietet.
+
+### Hinzugefügt
+- **`mailarc setup`** – schreibt interaktiv die globale Bootstrap-Konfiguration
+  (`~/.config/mailarc/config.env`, 0600): Server-URL, Token (verdeckt), Konto.
+  Prüft die Server-Erreichbarkeit und bietet die vorhandenen Konten zur Auswahl.
+  Skriptbar über `--non-interactive` samt `--base-url/--token/--account/--verify`.
+- **macOS-Installer richtet optional ein:** das `postinstall`-Skript fragt am Ende
+  (per Dialog, im Kontext des angemeldeten Nutzers), ob `mailarc setup` jetzt in
+  einem Terminal laufen soll — so ist ein frisches System nach dem `.pkg`/`.dmg`
+  direkt einsatzbereit.
+
+### Geändert
+- **PDF-Export degradiert sauber:** WeasyPrint-Verfügbarkeit wird beim Import
+  erkannt (`render.WEASYPRINT_OK`); fehlt es (z. B. im macOS-Paket, das die nativen
+  Libs bewusst nicht bündelt), zeigen `search pdf`/`pdf-batch` eine klare Meldung
+  statt eines Stacktrace. `build.sh` schließt WeasyPrint aus dem Bundle aus.
+
 ## [2.4.0.0] – 2026-08-04
 
 Schwerpunkt dieses Releases ist der **PDF-Export von Mail-Inhalten**: HTML-Mails

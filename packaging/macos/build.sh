@@ -44,9 +44,17 @@ PY="$VENV/bin/python"
 "$PY" -m pip install --quiet --upgrade pip
 "$PY" -m pip install --quiet pyinstaller pillow
 
-# Laufzeit-Abhängigkeiten aus pyproject.toml lesen (bash-3.2-kompatibel)
+# Laufzeit-Abhängigkeiten aus pyproject.toml lesen (bash-3.2-kompatibel).
+# WeasyPrint wird bewusst AUSGELASSEN: es bringt native Libs (pango/cairo/gobject)
+# mit, die sich nur schwer zuverlässig ins Paket bündeln lassen. Der PDF-Export
+# degradiert dann sauber (freundliche Meldung in `search pdf`); der Rest ist
+# vollständig einsatzbereit. Wer PDF im Paket will, entfernt den Filter unten und
+# das --exclude-module weiter unten und liefert die Dylibs mit.
 DEPS=()
 while IFS= read -r line; do
+  case "$line" in
+    weasyprint*|WeasyPrint*|WEASYPRINT*) echo "    (übersprungen: $line — PDF-Export degradiert)"; continue;;
+  esac
   [ -n "$line" ] && DEPS+=("$line")
 done < <("$PY" - "$ROOT/pyproject.toml" <<'PYEOF'
 import sys, tomllib
@@ -82,6 +90,7 @@ cp -R "$ROOT/app" "$SRC/app"
   --collect-submodules app \
   --collect-all elasticsearch \
   --collect-data docx \
+  --exclude-module weasyprint \
   --distpath "$BUILD/pyi" \
   --workpath "$BUILD/pyi-work" \
   --specpath "$BUILD" \

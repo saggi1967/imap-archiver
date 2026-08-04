@@ -1,9 +1,48 @@
 #!/bin/bash
-# Verlinkt das installierte Programm nach /usr/local/bin, damit `mailarc`
-# direkt im PATH liegt.
+# postinstall:
+#   1. PATH-Symlink /usr/local/bin/mailarc anlegen.
+#   2. Optional den Einrichtungs-Assistenten `mailarc setup` anbieten, damit das
+#      System direkt einsatzbereit ist (zentrale Konfiguration).
+#
+# Der Symlink-Schritt ist kritisch (set -e). Alles danach ist best effort und darf
+# die Installation niemals scheitern lassen (set +e, immer exit 0).
 set -e
 
 mkdir -p /usr/local/bin
 ln -sf "/usr/local/mailarc/mailarc" "/usr/local/bin/mailarc"
+
+# --- ab hier best effort ----------------------------------------------------
+set +e
+
+# Der eingeloggte GUI-Nutzer (postinstall läuft als root).
+CONSOLE_USER="$(stat -f '%Su' /dev/console 2>/dev/null)"
+if [ -z "$CONSOLE_USER" ] || [ "$CONSOLE_USER" = "root" ] || [ "$CONSOLE_USER" = "loginwindow" ]; then
+  exit 0
+fi
+USER_UID="$(id -u "$CONSOLE_USER" 2>/dev/null)"
+[ -n "$USER_UID" ] || exit 0
+
+# Befehl im GUI-Kontext des Nutzers ausführen (nötig für Dialoge/Terminal).
+run_as_user() { launchctl asuser "$USER_UID" sudo -u "$CONSOLE_USER" "$@"; }
+
+DIALOG='try
+  set q to display dialog "mailarc ist installiert.
+
+Jetzt die zentrale Konfiguration einrichten? Server-Adresse, Zugangstoken und Konto werden abgefragt und geprüft — danach ist alles einsatzbereit." buttons {"Später", "Jetzt einrichten"} default button "Jetzt einrichten" with title "mailarc einrichten" with icon note
+  return button returned of q
+on error number -128
+  return "Später"
+end try'
+
+ANSWER="$(run_as_user /usr/bin/osascript -e "$DIALOG" 2>/dev/null)"
+
+if [ "$ANSWER" = "Jetzt einrichten" ]; then
+  # In einem echten Terminal starten: der Assistent ist interaktiv (Token verdeckt,
+  # Kontoauswahl, Server-Check).
+  run_as_user /usr/bin/osascript \
+    -e 'tell application "Terminal" to activate' \
+    -e 'tell application "Terminal" to do script "/usr/local/bin/mailarc setup"' \
+    >/dev/null 2>&1
+fi
 
 exit 0
