@@ -4,7 +4,7 @@
 
 **Read-only IMAP-Mailarchiv mit Volltextsuche – von der Mailbox in SQLite und Elasticsearch.**
 
-[![Version](https://img.shields.io/badge/version-2.3.0.0-blue)](#)
+[![Version](https://img.shields.io/badge/version-2.4.0.0-blue)](#)
 [![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](#)
 [![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.x-005571?logo=elasticsearch&logoColor=white)](#)
 [![CLI](https://img.shields.io/badge/CLI-Typer%20%2B%20Rich-009688)](#)
@@ -202,13 +202,31 @@ mailarc search query -s Protokoll --attachments
 mailarc search query --file .pdf --since 2026-01-01
 mailarc search show INBOX:7:42                  # eine Mail vollständig anzeigen
 mailarc search download INBOX:7:42 -o ~/Downloads   # Anhänge als Dateien speichern
+mailarc search pdf INBOX:7:42 -o ~/Desktop          # HTML-Inhalt als PDF rendern
+mailarc search pdf INBOX:7:42 -o ~/Mail.pdf --open  # fester Name, danach öffnen
+mailarc search pdf INBOX:7:42 --load-remote         # externe Bilder mitladen
+mailarc search pdf-batch --from rechnung@apple.com -p Apple_Rechnung -o ~/Rechnungen
 mailarc search top --by from_domain             # häufigste Absender-Domains
 ```
 
 Trefferlisten zeigen eine **ID-Spalte** (`mailbox:uidvalidity:uid`), die direkt für
-`search show` und `search download` verwendbar ist (alternativ die Message-ID).
-`download` liest die Originalbytes aus der lokalen DB, entschärft Dateinamen
-(kein Pfad-Ausbruch) und vermeidet Überschreiben durch `name (1).ext`.
+`search show`, `search download` und `search pdf` verwendbar ist (alternativ die
+Message-ID). `download` liest die Originalbytes aus der lokalen DB, entschärft
+Dateinamen (kein Pfad-Ausbruch) und vermeidet Überschreiben durch `name (1).ext`.
+
+`pdf` rendert den **HTML-Teil** der Mail mit **WeasyPrint** zu einem sauber
+formatierten PDF (Kopfzeilen + Inhalt). Inline-Bilder (`cid:`) werden aus der
+Roh-Mail eingebettet, sodass das PDF autark ist; **extern verlinkte Bilder
+(http/https) sind aus Datenschutzgründen standardmäßig blockiert** und nur mit
+`--load-remote` geladen. Reine Text-Mails werden ebenfalls als PDF ausgegeben.
+Ohne `.pdf`-Endung im Ziel wird der Dateiname aus dem Betreff abgeleitet.
+WeasyPrint braucht native Libs (macOS: `brew install pango`).
+
+`pdf-batch` rendert **alle Treffer einer Suche** in einem Lauf und akzeptiert
+dieselben Filter wie `search query`. Die Dateinamen folgen dem Schema
+`<prefix>_<datum>[_lfdnr].pdf` (`--prefix/-p`, Datum als `YYYY-MM-DD`); die lfd.
+Nummer wird **nur bei Datumsgleichheit** angehängt. Mails ohne darstellbaren
+Inhalt oder mit Render-Fehler werden übersprungen und in der Tabelle vermerkt.
 
 ## Befehlsübersicht
 
@@ -225,6 +243,8 @@ Trefferlisten zeigen eine **ID-Spalte** (`mailbox:uidvalidity:uid`), die direkt 
 | `mailarc search recent` | Neueste Mails als Quickview |
 | `mailarc search show` | Einzelne Mail vollständig (Header, Anhänge, Body) |
 | `mailarc search download` | Anhänge einer Mail als Dateien speichern |
+| `mailarc search pdf` | HTML-Inhalt einer Mail als PDF rendern (WeasyPrint) |
+| `mailarc search pdf-batch` | Alle Treffer einer Suche als PDF (`<prefix>_<datum>[_lfdnr]`) |
 | `mailarc search count` / `top` | Treffer zählen / Häufigkeits-Aggregation |
 | `mailarc --version` | Version & Banner |
 

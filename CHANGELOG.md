@@ -5,6 +5,30 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung an [PEP 440](https://peps.python.org/pep-0440/).
 
+## [2.4.0.0] – 2026-08-04
+
+Schwerpunkt dieses Releases ist der **PDF-Export von Mail-Inhalten**: HTML-Mails
+lassen sich einzeln oder für ganze Suchergebnisse als sauber gerendertes PDF
+speichern.
+
+### Hinzugefügt
+- **`mailarc search pdf <ID>`** – rendert den `text/html`-Teil einer archivierten
+  Mail per **WeasyPrint** zu einem PDF (Kopfzeilen + Inhalt). Auflösung über
+  `mailbox:uidvalidity:uid` oder Message-ID, analog zu `search download`.
+- **Inline-Bilder** (`cid:`) werden aus der Roh-Mail als `data:`-URI eingebettet,
+  sodass das PDF autark ist. Reine Text-Mails werden ebenfalls als PDF ausgegeben.
+- **Datenschutz-Default:** extern verlinkte Bilder (http/https) sind blockiert und
+  werden nur mit `--load-remote` geladen (verhindert Tracking-Pixel).
+- Optionen `--out` (Datei oder Verzeichnis; Dateiname sonst aus dem Betreff) und
+  `--open` (PDF nach dem Erstellen öffnen).
+- **`mailarc search pdf-batch`** – erzeugt PDFs für **alle Treffer einer Suche**
+  in einem Lauf (gleiche Filter wie `search query`). Namensschema
+  `<prefix>_<datum>[_lfdnr].pdf` (`--prefix/-p`): Mail-Datum als `YYYY-MM-DD`, eine
+  **lfd. Nummer nur bei Datumsgleichheit** (chronologisch, nullgepolstert).
+  Einzelne Mails ohne Inhalt / mit Render-Fehler werden übersprungen, ohne den
+  Batch abzubrechen.
+- Neue Abhängigkeit **`weasyprint>=63`** (native Libs, macOS: `brew install pango`).
+
 ## [2.3.0.0] – 2026-08-04
 
 Schwerpunkt dieses Releases ist die **vollständig zentrale Konfiguration**: neben
@@ -43,7 +67,6 @@ liegen — die lokale `.env` schrumpft auf einen einmaligen Bootstrap.
   Bootstrap (`REST_API_TOKEN`, `REST_BASE_URL`, `ACCOUNT`) muss lokal bleiben —
   er ist der Schlüssel zum zentralen Speicher (Henne-Ei) und lässt sich nicht
   selbst dort ablegen.
-
 ## [2.1.0.0] – 2026-07-07
 
 Schwerpunkt dieses Releases sind **zentrale, verschlüsselte IMAP-Zugangsdaten** —

@@ -92,6 +92,28 @@ _EP_DOWNLOAD = (
     "mailarc search download \"<abc@firma.de>\""
 )
 
+_EP_PDF = (
+    "Beispiele:\n\n\b\n"
+    "# HTML-Mail als PDF ins aktuelle Verzeichnis (Name aus Betreff)\n"
+    "mailarc search pdf INBOX:7:42\n"
+    "# fester Dateiname\n"
+    "mailarc search pdf INBOX:7:42 -o ~/Rechnung.pdf\n"
+    "# in ein Zielverzeichnis und danach öffnen\n"
+    "mailarc search pdf INBOX:7:42 -o ~/Desktop --open\n"
+    "# externe Bilder (http/https) mitladen — Standard ist blockiert\n"
+    "mailarc search pdf \"<abc@firma.de>\" --load-remote"
+)
+
+_EP_PDF_BATCH = (
+    "Beispiele:\n\n\b\n"
+    "# alle Treffer einer Suche als PDF; Schema <prefix>_<datum>[_lfdnr].pdf\n"
+    "mailarc search pdf-batch --from rechnung@apple.com -p Apple_Rechnung -o ~/Rechnungen\n"
+    "# Volltext + Domain + Zeitraum\n"
+    "mailarc search pdf-batch Rechnung --domain apple.com --since 2026-01-01 -p Apple_Rechnung\n"
+    "# nur ein Ordner, externe Bilder mitladen\n"
+    "mailarc search pdf-batch --mailbox INBOX -p Apple --load-remote"
+)
+
 
 def _human(n: int) -> str:
     f = float(n)
@@ -118,6 +140,12 @@ def _unique_path(path: Path) -> Path:
         if not candidate.exists():
             return candidate
         i += 1
+
+
+def _pdf_filename(subject: str | None, doc_id: str) -> str:
+    """Leitet einen sicheren PDF-Dateinamen aus dem Betreff (Fallback: ID) ab."""
+    base = re.sub(r"[^\w.\-() ]", "_", subject or doc_id).strip(" .")
+    return (base[:120] or "mail") + ".pdf"
 
 
 def _parse_last(last: str) -> str:
@@ -487,6 +515,217 @@ def download(
 
     console.print(table)
     console.print(f"[bold green]✓[/] {len(items)} Anhang/Anhänge gespeichert.")
+
+
+@app.command("pdf", epilog=_EP_PDF)
+def pdf(
+    doc_id: str = typer.Argument(
+        ..., help="Dokument-ID (mailbox:uidvalidity:uid) oder Message-ID."
+    ),
+    out: Path = typer.Option(
+        Path("."),
+        "--out",
+        "-o",
+        help="Zielverzeichnis oder Ziel-Datei (endet auf .pdf).",
+    ),
+    load_remote: bool = typer.Option(
+        False,
+        "--load-remote",
+        help="Extern verlinkte Bilder (http/https) mitladen. Standard: blockiert (Datenschutz).",
+    ),
+    open_after: bool = typer.Option(
+        False, "--open", help="Das erzeugte PDF danach öffnen."
+    ),
+) -> None:
+    """Rendert den (HTML-)Inhalt einer gefundenen Mail als PDF (Quelle: lokale DB)."""
+    with get_storage() as storage:
+        row = None
+        parts = doc_id.rsplit(":", 2)
+        if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
+            row = storage.get_raw_by_ref(parts[0], int(parts[1]), int(parts[2]))
+        if row is None:
+            row = storage.get_raw_by_message_id(doc_id)
+
+    if row is None:
+        console.print(f"[red]Keine Mail zu '{doc_id}' in der DB gefunden.[/]")
+        raise typer.Exit(1)
+
+    try:
+        from app import render
+    except ModuleNotFoundError:
+        console.print(
+            "[red]WeasyPrint ist nicht installiert.[/] Installation:\n"
+            "  pip install weasyprint\n"
+            "  brew install pango  # native Libs (macOS)"
+        )
+        raise typer.Exit(1) from None
+
+    pdf_bytes = render.html_to_pdf(row["raw"], load_remote=load_remote)
+    if pdf_bytes is None:
+        console.print("[yellow]Diese Mail hat keinen darstellbaren Text-/HTML-Inhalt.[/]")
+        raise typer.Exit(1)
+
+    if out.suffix.lower() == ".pdf":
+        out.parent.mkdir(parents=True, exist_ok=True)
+        target = _unique_path(out)
+    else:
+        out.mkdir(parents=True, exist_ok=True)
+        target = _unique_path(out / _pdf_filename(render.subject_of(row["raw"]), doc_id))
+
+    target.write_bytes(pdf_bytes)
+    console.print(
+        f"[bold green]✓[/] PDF erstellt: [cyan]{target}[/] "
+        f"[dim]({_human(len(pdf_bytes))})[/]"
+    )
+    if not load_remote:
+        console.print("[dim]Externe Bilder wurden blockiert — mit --load-remote nachladen.[/]")
+    if open_after:
+        typer.launch(str(target))
+
+
+def _mail_date_str(src: dict) -> str:
+    """Mail-Datum als YYYY-MM-DD (für den Dateinamen); Fallback 'kein-datum'."""
+    raw = src.get("date") or src.get("internaldate")
+    if not raw:
+        return "kein-datum"
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+    except ValueError:
+        return raw[:10]
+
+
+@app.command("pdf-batch", epilog=_EP_PDF_BATCH)
+def pdf_batch(
+    text: str = typer.Argument(None, help="Volltext über Betreff, Body und Absendername."),
+    prefix: str = typer.Option(
+        ..., "--prefix", "-p", help="Dateinamen-Präfix, z. B. Apple_Rechnung."
+    ),
+    out: Path = typer.Option(
+        Path("."), "--out", "-o", help="Zielverzeichnis (wird bei Bedarf angelegt)."
+    ),
+    frm: str = typer.Option(None, "--from", help="Exakte Absenderadresse."),
+    to: str = typer.Option(None, "--to", help="Exakte Empfängeradresse."),
+    domain: str = typer.Option(None, "--domain", help="Absender-Domain, z. B. apple.com."),
+    subject: str = typer.Option(None, "--subject", "-s", help="Nur im Betreff suchen."),
+    phrase: bool = typer.Option(
+        False, "--phrase", "-x", help="Exakte Phrase: Tokens müssen direkt aufeinanderfolgen."
+    ),
+    file: str = typer.Option(None, "--file", help="Anhang-Dateiname (Teilwort)."),
+    mailbox: str = typer.Option(None, "--mailbox", help="Auf einen IMAP-Ordner einschränken."),
+    attachments: bool = typer.Option(
+        None, "--attachments/--no-attachments", help="Nur Mails mit/ohne Anhang."
+    ),
+    since: str = typer.Option(None, "--since", help="Ab Datum (YYYY-MM-DD)."),
+    until: str = typer.Option(None, "--until", help="Bis Datum (YYYY-MM-DD)."),
+    last: str = typer.Option(None, "--last", help="Relativ, z. B. 24h, 7d, 2w."),
+    limit: int = typer.Option(1000, "--limit", "-n", help="Max. Mails (Default 1000)."),
+    load_remote: bool = typer.Option(
+        False, "--load-remote", help="Externe Bilder (http/https) mitladen. Standard: blockiert."
+    ),
+) -> None:
+    """Rendert ALLE Treffer einer Suche als PDF: <prefix>_<datum>[_lfdnr].pdf.
+
+    Die lfd. Nummer wird nur angehängt, wenn mehrere Mails auf dasselbe Datum
+    fallen (dann chronologisch/aufsteigend nummeriert).
+    """
+    try:
+        from app import render
+    except ModuleNotFoundError:
+        console.print(
+            "[red]WeasyPrint ist nicht installiert.[/] Installation:\n"
+            "  pip install weasyprint\n"
+            "  brew install pango  # native Libs (macOS)"
+        )
+        raise typer.Exit(1) from None
+
+    since_iso = _parse_last(last) if last else since
+    q = build_query(
+        text, frm, to, domain, subject, file, mailbox, attachments, since_iso, until, phrase
+    )
+
+    client = es.client()
+    resp = client.search(
+        index=settings.ES_INDEX,
+        query=q,
+        size=limit,
+        # aufsteigend, damit die lfd. Nummer bei Datumsgleichheit chronologisch läuft
+        sort=[{"date": {"order": "asc", "missing": "_last"}}, {"uid": {"order": "asc"}}],
+        source_includes=["date", "internaldate", "mailbox", "uid", "uidvalidity"],
+    )
+    hits = resp["hits"]["hits"]
+    total = resp["hits"]["total"]["value"]
+    if not hits:
+        console.print("[yellow]Keine Treffer — nichts zu exportieren.[/]")
+        return
+    if total > len(hits):
+        console.print(
+            f"[yellow]Hinweis:[/] {total} Treffer, exportiere die ersten {len(hits)} "
+            "(--limit erhöhen)."
+        )
+
+    dated = [(_mail_date_str(h["_source"]), h) for h in hits]
+    counts: dict[str, int] = {}
+    for d, _h in dated:
+        counts[d] = counts.get(d, 0) + 1
+
+    out.mkdir(parents=True, exist_ok=True)
+    safe_prefix = re.sub(r"[^\w.\-() ]", "_", prefix).strip(" .") or "mail"
+
+    table = Table(
+        title=f"PDF-Export: {len(hits)} Mails → {out}", header_style="bold magenta", expand=True
+    )
+    table.add_column("#", justify="right", style="dim")
+    table.add_column("Datum", style="cyan", no_wrap=True)
+    table.add_column("ID", style="yellow", no_wrap=True)
+    table.add_column("Datei", style="green")
+    table.add_column("Status", no_wrap=True)
+
+    per_date_idx: dict[str, int] = {}
+    written = skipped = 0
+    with get_storage() as storage:
+        for n, (d, h) in enumerate(dated, start=1):
+            doc_id = h["_id"]
+            parts = doc_id.rsplit(":", 2)
+            row = None
+            if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
+                row = storage.get_raw_by_ref(parts[0], int(parts[1]), int(parts[2]))
+            if row is None:
+                row = storage.get_raw_by_message_id(doc_id)
+            if row is None:
+                table.add_row(str(n), d, doc_id, "—", "[red]nicht in DB[/]")
+                skipped += 1
+                continue
+
+            if counts[d] > 1:
+                per_date_idx[d] = per_date_idx.get(d, 0) + 1
+                width = max(2, len(str(counts[d])))
+                name = f"{safe_prefix}_{d}_{per_date_idx[d]:0{width}d}.pdf"
+            else:
+                name = f"{safe_prefix}_{d}.pdf"
+
+            try:
+                pdf_bytes = render.html_to_pdf(row["raw"], load_remote=load_remote)
+            except Exception as exc:  # eine kaputte Mail darf den Lauf nicht abbrechen
+                table.add_row(str(n), d, doc_id, name, f"[red]Fehler: {exc}[/]")
+                skipped += 1
+                continue
+            if pdf_bytes is None:
+                table.add_row(str(n), d, doc_id, "—", "[yellow]kein Inhalt[/]")
+                skipped += 1
+                continue
+
+            target = _unique_path(out / name)
+            target.write_bytes(pdf_bytes)
+            table.add_row(str(n), d, doc_id, target.name, "[green]✓[/]")
+            written += 1
+
+    console.print(table)
+    summary = f"[bold green]✓[/] {written} PDF(s) geschrieben"
+    if skipped:
+        summary += f", [yellow]{skipped} übersprungen[/]"
+    console.print(summary + f" → {out}")
+    if not load_remote:
+        console.print("[dim]Externe Bilder blockiert — mit --load-remote nachladen.[/]")
 
 
 @app.command("top", epilog=_EP_TOP)
