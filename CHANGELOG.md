@@ -5,6 +5,45 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung an [PEP 440](https://peps.python.org/pep-0440/).
 
+## [2.3.0.0] – 2026-08-04
+
+Schwerpunkt dieses Releases ist die **vollständig zentrale Konfiguration**: neben
+den IMAP-Zugangsdaten kann jetzt auch die restliche Konfiguration zentral je Konto
+liegen — die lokale `.env` schrumpft auf einen einmaligen Bootstrap.
+
+### Hinzugefügt
+- **Globale Bootstrap-`.env`:** `mailarc` sucht die Konfiguration in aufsteigender
+  Priorität unter `~/.config/mailarc/config.env` (bzw. `$XDG_CONFIG_HOME`),
+  projektlokaler `./.env` und `$MAILARC_ENV`. Eine **einzige** globale Datei genügt
+  damit für alle Verzeichnisse. Vorlage: `.env.bootstrap.example`.
+- **Zentrale Zusatz-Config je Konto:** Elasticsearch-Ziel (Host/User/Passwort/
+  Index/Verify) und Anhang-Optionen liegen optional im mailarc-server und werden
+  zur Laufzeit angewandt (`ensure_central_config`, jetzt auch beim `index`/`search`
+  über `es.client()`). Gesetzte Felder überschreiben die lokale `.env`, nicht
+  gesetzte bleiben auf dem lokalen Default.
+- **`mailarc account config <label>`** zum Setzen dieser Zentral-Config;
+  `--from-env` übernimmt die aktuell geladenen lokalen Werte in einem Rutsch
+  (Migration der `.env`).
+- **`account list` zeigt jetzt die vollständige Config je Konto** (IMAP + ES +
+  Anhang) und markiert zentral nicht gesetzte Felder. Ein hinterlegter ES-Host
+  ohne ES-Passwort wird explizit als wahrscheinliche **ES-401-Ursache** angemerkt.
+  `--show-secrets` gibt die Passwörter zum Debuggen im Klartext aus. Der Server
+  meldet dafür in `AccountOut` neu `es_password_set` (nie das Passwort selbst).
+
+### Serverseitig (mailarc-server)
+- `account`-Tabelle um ES-Felder (inkl. **Fernet-verschlüsseltem** `es_password_enc`)
+  und Anhang-Optionen erweitert; automatische Spalten-Migration beim Start
+  (`ALTER TABLE ADD COLUMN` für Bestands-DBs).
+- Neuer Endpoint **`GET /accounts/{name}/config`** liefert das vollständige Profil
+  (IMAP + ES + Anhang) mit entschlüsselten Secrets; `POST`/`PATCH /accounts`
+  akzeptieren die neuen Felder. `GET /credentials` bleibt für ältere Clients.
+
+### Sicherheit
+- Auch das ES-Passwort liegt nur noch verschlüsselt in der zentralen DB. Der
+  Bootstrap (`REST_API_TOKEN`, `REST_BASE_URL`, `ACCOUNT`) muss lokal bleiben —
+  er ist der Schlüssel zum zentralen Speicher (Henne-Ei) und lässt sich nicht
+  selbst dort ablegen.
+
 ## [2.1.0.0] – 2026-07-07
 
 Schwerpunkt dieses Releases sind **zentrale, verschlüsselte IMAP-Zugangsdaten** —
