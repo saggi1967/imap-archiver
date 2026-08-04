@@ -34,19 +34,33 @@ Die Version wird automatisch aus `pyproject.toml` gelesen.
    sein.
 4. **.pkg** – `pkgbuild` packt die Binary nach `/usr/local/mailarc`,
    `productbuild` ergänzt Begrüßung, Lizenz und Abschluss; ein `postinstall`-Skript
-   legt den Symlink `/usr/local/bin/mailarc` an.
+   legt den Symlink `/usr/local/bin/mailarc` an **und bietet am Ende den
+   Einrichtungs-Assistenten an** (siehe unten).
 5. **.dmg** – `create-dmg` legt das `.pkg` mit Hintergrundbild, Fenstergröße und
    Icon-Position auf "Zum Installieren doppelklicken" aus.
 
 ## Installation (Endnutzer)
 
-DMG öffnen → `.pkg` doppelklicken → Installer folgen. Danach im Terminal:
+DMG öffnen → `.pkg` doppelklicken → Installer folgen. Am Ende fragt der Installer,
+ob die **zentrale Konfiguration** jetzt eingerichtet werden soll. Bei „Jetzt
+einrichten" startet `mailarc setup` in einem Terminal und fragt Server-Adresse,
+Token und Konto ab (mit Erreichbarkeitsprüfung) — danach ist das System
+einsatzbereit. Der Assistent lässt sich jederzeit erneut aufrufen:
 
 ```bash
-mailarc --version
+mailarc setup       # schreibt ~/.config/mailarc/config.env
+mailarc account list
+mailarc sync run
 ```
 
 ## Hinweise
+
+- **PDF-Export (WeasyPrint):** Der `.pkg`-Build lässt WeasyPrint samt nativer Libs
+  (pango/cairo) **bewusst weg** — es ließe sich nur schwer zuverlässig bündeln.
+  `mailarc search pdf` zeigt dann eine klare Meldung statt zu crashen; alle anderen
+  Funktionen sind vollständig verfügbar. Wer PDF im Paket braucht, entfernt in
+  `build.sh` den `weasyprint`-Filter und das `--exclude-module weasyprint` und
+  liefert die Dylibs mit.
 
 - **Python-Version:** PyInstaller unterstützt brandneue Python-Releases manchmal
   verzögert. Falls der Build daran scheitert, ein 3.12/3.13 verwenden:

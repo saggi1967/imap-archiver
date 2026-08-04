@@ -130,6 +130,24 @@ def _safe_name(name: str | None, idx: int) -> str:
     return base or f"anhang-{idx}.bin"
 
 
+def _require_render():
+    """Lädt das render-Modul und stellt sicher, dass WeasyPrint verfügbar ist.
+
+    Im macOS-Paket sind die nativen WeasyPrint-Libs bewusst nicht gebündelt; dann
+    fehlt hier eine klare Meldung statt eines Stacktraces mitten im Rendern.
+    """
+    from app import render
+
+    if not render.WEASYPRINT_OK:
+        console.print(
+            "[red]PDF-Export nicht verfügbar:[/] WeasyPrint fehlt "
+            f"[dim]({render.WEASYPRINT_ERROR})[/].\n"
+            "  Installation:  pip install weasyprint  ·  brew install pango  # native Libs (macOS)"
+        )
+        raise typer.Exit(1)
+    return render
+
+
 def _unique_path(path: Path) -> Path:
     """Hängt bei Namenskollision " (n)" an, statt zu überschreiben."""
     if not path.exists():
@@ -550,15 +568,7 @@ def pdf(
         console.print(f"[red]Keine Mail zu '{doc_id}' in der DB gefunden.[/]")
         raise typer.Exit(1)
 
-    try:
-        from app import render
-    except ModuleNotFoundError:
-        console.print(
-            "[red]WeasyPrint ist nicht installiert.[/] Installation:\n"
-            "  pip install weasyprint\n"
-            "  brew install pango  # native Libs (macOS)"
-        )
-        raise typer.Exit(1) from None
+    render = _require_render()
 
     pdf_bytes = render.html_to_pdf(row["raw"], load_remote=load_remote)
     if pdf_bytes is None:
@@ -628,15 +638,7 @@ def pdf_batch(
     Die lfd. Nummer wird nur angehängt, wenn mehrere Mails auf dasselbe Datum
     fallen (dann chronologisch/aufsteigend nummeriert).
     """
-    try:
-        from app import render
-    except ModuleNotFoundError:
-        console.print(
-            "[red]WeasyPrint ist nicht installiert.[/] Installation:\n"
-            "  pip install weasyprint\n"
-            "  brew install pango  # native Libs (macOS)"
-        )
-        raise typer.Exit(1) from None
+    render = _require_render()
 
     since_iso = _parse_last(last) if last else since
     q = build_query(

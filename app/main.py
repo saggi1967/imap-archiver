@@ -4,7 +4,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from app import __version__
-from app.commands import account, database, index, search, stats, status, sync
+from app.commands import account, database, index, search, setup, stats, status, sync
 
 # Banner auf stderr, damit JSON-/Pipe-Ausgaben auf stdout sauber bleiben.
 _err = Console(stderr=True)
@@ -68,6 +68,9 @@ app.add_typer(status.app, name="status")
 app.add_typer(stats.app, name="stats")
 app.add_typer(index.app, name="index")
 app.add_typer(search.app, name="search")
+app.command("setup", help="Zentrale Konfiguration einrichten (~/.config/mailarc/config.env).")(
+    setup.setup
+)
 
 if __name__ == "__main__":
     app()

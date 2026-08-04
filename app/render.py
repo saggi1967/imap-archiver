@@ -18,6 +18,18 @@ from html import escape
 
 from app.extract import _decode, _decode_text
 
+# WeasyPrint ist optional (bringt native Libs pango/cairo mit; im macOS-Paket
+# bewusst nicht gebündelt). Verfügbarkeit einmal beim Import prüfen, damit die
+# Befehle sauber degradieren können, statt mitten im Rendern zu crashen.
+try:
+    import weasyprint  # noqa: F401
+
+    WEASYPRINT_OK = True
+    WEASYPRINT_ERROR: str | None = None
+except Exception as _exc:  # ModuleNotFoundError oder fehlende native Libs
+    WEASYPRINT_OK = False
+    WEASYPRINT_ERROR = str(_exc)
+
 # WeasyPrint/fontTools loggen Layout-Warnungen sehr gesprächig — für ein CLI
 # unerwünscht. Auf ERROR drosseln, damit die stdout-/stderr-Ausgabe sauber bleibt.
 for _name in ("weasyprint", "fontTools", "fontTools.subset", "fontTools.ttLib"):
@@ -114,7 +126,11 @@ def html_to_pdf(raw: bytes, *, load_remote: bool = False) -> bytes | None:
 
     ``load_remote=False`` (Default) blockiert http/https-Ressourcen (Tracking-Pixel,
     externe Bilder); ``True`` lädt sie nach.
+
+    Setzt WeasyPrint voraus (``WEASYPRINT_OK``); Aufrufer sollten das vorher prüfen.
     """
+    if not WEASYPRINT_OK:  # Schutz, falls doch ohne Vorabprüfung aufgerufen
+        raise ModuleNotFoundError(WEASYPRINT_ERROR or "weasyprint")
     from weasyprint import HTML, default_url_fetcher
 
     msg = message_from_bytes(raw)

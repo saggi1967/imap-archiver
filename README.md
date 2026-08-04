@@ -4,7 +4,7 @@
 
 **Read-only IMAP-Mailarchiv mit Volltextsuche – von der Mailbox in SQLite und Elasticsearch.**
 
-[![Version](https://img.shields.io/badge/version-2.4.0.0-blue)](#)
+[![Version](https://img.shields.io/badge/version-2.5.0.0-blue)](#)
 [![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](#)
 [![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.x-005571?logo=elasticsearch&logoColor=white)](#)
 [![CLI](https://img.shields.io/badge/CLI-Typer%20%2B%20Rich-009688)](#)
@@ -146,7 +146,22 @@ Alle Einstellungen kommen aus Umgebungsvariablen bzw. einer `.env`-Datei
 
 ## Verwendung
 
-Typischer End-to-End-Ablauf:
+### Erstinstallation / Einrichtung
+
+Auf einem frischen System (bzw. nach der `.pkg`/`.dmg`-Installation) genügt der
+Einrichtungs-Assistent — er schreibt die globale `~/.config/mailarc/config.env`
+und macht das System einsatzbereit:
+
+```bash
+mailarc setup                   # fragt Server, Token und Konto ab (mit Server-Check)
+mailarc account list            # zeigt das zentrale Profil
+mailarc sync run                # loslegen
+```
+
+Der macOS-Installer bietet `mailarc setup` am Ende automatisch an. Skriptbar:
+`mailarc setup --non-interactive --base-url https://… --token … --account <label>`.
+
+Typischer End-to-End-Ablauf (lokal, ohne zentralen Server):
 
 ```bash
 mailarc db init                 # 1. SQLite-Schema anlegen
@@ -232,6 +247,7 @@ Inhalt oder mit Render-Fehler werden übersprungen und in der Tabelle vermerkt.
 
 | Befehl | Zweck |
 |---|---|
+| `mailarc setup` | Zentrale Konfiguration einrichten (`~/.config/mailarc/config.env`) — ready to use |
 | `mailarc account add` / `update` / `list` / `remove` | Zentrale IMAP-Konten verwalten (nur `STORAGE_BACKEND=rest`) |
 | `mailarc account config` | Zentrale Zusatz-Config (ES-Ziel, Anhang-Optionen) je Konto setzen; `--from-env` migriert die lokale `.env` |
 | `mailarc db init` | SQLite-Schema anlegen / migrieren |

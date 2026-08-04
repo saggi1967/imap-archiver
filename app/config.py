@@ -4,6 +4,17 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def global_bootstrap_path() -> Path:
+    """Pfad der globalen Bootstrap-Datei ``~/.config/mailarc/config.env``.
+
+    Respektiert ``$XDG_CONFIG_HOME``. Gemeinsame Quelle für das Laden (``_env_files``)
+    und den Schreiber (``mailarc setup``), damit beide denselben Ort meinen.
+    """
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    config_home = Path(xdg) if xdg else Path.home() / ".config"
+    return config_home / "mailarc" / "config.env"
+
+
 def _env_files() -> tuple[str, ...]:
     """Kandidaten-.env in aufsteigender Priorität (spätere überschreiben frühere).
 
@@ -12,13 +23,11 @@ def _env_files() -> tuple[str, ...]:
     Bedarf, ``$MAILARC_ENV`` schlägt alles. Echte Umgebungsvariablen haben ohnehin
     Vorrang vor jeder Datei. Nicht existierende Dateien ignoriert pydantic-settings.
     """
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    config_home = Path(xdg) if xdg else Path.home() / ".config"
     files = [
-        config_home / "mailarc" / "config.env",  # globaler Bootstrap (Basis)
-        Path(".env"),                             # projektlokal (überschreibt global)
+        global_bootstrap_path(),  # globaler Bootstrap (Basis)
+        Path(".env"),             # projektlokal (überschreibt global)
     ]
-    if os.environ.get("MAILARC_ENV"):             # expliziter Override (höchste)
+    if os.environ.get("MAILARC_ENV"):  # expliziter Override (höchste)
         files.append(Path(os.environ["MAILARC_ENV"]))
     return tuple(str(f) for f in files)
 

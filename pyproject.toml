@@ -1,6 +1,6 @@
 [project]
 name = "imap-archiver"
-version = "2.4.0.0"
+version = "2.5.0.0"
 description = "CLI-Client zum read-only Import von IMAP-Mails in eine lokale SQLite-DB"
 requires-python = ">=3.12"
 dependencies = [
