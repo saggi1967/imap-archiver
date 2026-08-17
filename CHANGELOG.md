@@ -151,5 +151,9 @@ präzisere Volltextsuche.
   Elasticsearch, Volltextsuche, Statistiken und PDF-/Office-Anhang-Extraktion
   über die `mailarc`-CLI.
 
+[2.5.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.5.0.0
+[2.4.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.4.0.0
+[2.3.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.3.0.0
+[2.1.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.1.0.0
 [2.0.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.0.0.0
 [1.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v1.0.0
