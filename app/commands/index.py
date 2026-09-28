@@ -22,9 +22,22 @@ app = typer.Typer(help="Mails suchoptimal nach Elasticsearch indexieren")
 console = Console()
 
 
+def _is_rest() -> bool:
+    return settings.STORAGE_BACKEND.strip().lower() == "rest"
+
+
 @app.command("init")
 def init() -> None:
     """Legt den Elasticsearch-Index mit Mapping an (idempotent)."""
+    if _is_rest():
+        # Bei zentralem Backend verwaltet der Server den Index (Elasticsearch ist
+        # nur dort erreichbar). Er legt ihn beim Indexlauf automatisch an/aktualisiert
+        # das Mapping — hier ist nichts zu tun.
+        console.print(
+            "[green]Zentrales Backend:[/] der Index wird vom mailarc-server verwaltet "
+            "und bei [bold]mailarc index run[/] automatisch angelegt/aktualisiert."
+        )
+        return
     client = es.client()
     created = es.ensure_index(client, settings.ES_INDEX)
     es.sync_mapping(client, settings.ES_INDEX)
@@ -70,6 +83,10 @@ def run(
     batch: int = typer.Option(500, "--batch", help="Bulk-Batchgröße."),
 ) -> None:
     """Sendet noch nicht indexierte Mails an Elasticsearch. Mit --reindex alle."""
+    if _is_rest():
+        _run_remote(reindex)
+        return
+
     client = es.client()
     if es.ensure_index(client, settings.ES_INDEX):
         console.print(f"[green]Index [bold]{settings.ES_INDEX}[/] neu angelegt.[/]")
@@ -129,3 +146,51 @@ def run(
         client.indices.refresh(index=settings.ES_INDEX)
 
     console.print(f"\n[bold green]✓[/] {ok} indexiert" + (f", [red]{failed} Fehler[/]" if failed else ""))
+
+
+def _run_remote(reindex: bool) -> None:
+    """REST-Backend: die Indexierung läuft auf dem Server (dort ist ES erreichbar).
+
+    Der Client stößt nur den Job an und zeigt den Fortschritt an — er öffnet keine
+    eigene ES-Verbindung mehr. Der Server legt Index/Mapping selbst an.
+    """
+    console.print(
+        "[bold]Indexierung[/] läuft [cyan]server-seitig[/] "
+        "(zentraler mailarc-server) — der Client braucht keinen ES-Zugang.\n"
+    )
+    progress = Progress(
+        SpinnerColumn(style="cyan"),
+        TextColumn("[bold cyan]indexiere[/]"),
+        BarColumn(bar_width=None),
+        TaskProgressColumn(),
+        MofNCompleteColumn(),
+        TextColumn("Mails"),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    )
+
+    with get_storage() as storage:
+        with progress:
+            task = progress.add_task("", total=None)
+
+            def on_progress(job: dict) -> None:
+                progress.update(
+                    task, total=job.get("total") or 0, completed=job.get("processed", 0)
+                )
+
+            job = storage.run_index_job(reindex, on_progress=on_progress)
+
+    if job["status"] == "failed":
+        console.print(f"\n[bold red]✗[/] Index-Job fehlgeschlagen: {job.get('errors')}")
+        raise typer.Exit(1)
+
+    if job.get("total", 0) == 0:
+        console.print("[green]✓[/] Nichts zu tun — alle Mails sind bereits indexiert.")
+        return
+
+    ok = job.get("indexed", 0)
+    failed = job.get("failed", 0)
+    console.print(
+        f"\n[bold green]✓[/] {ok} indexiert" + (f", [red]{failed} Fehler[/]" if failed else "")
+    )

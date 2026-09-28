@@ -105,6 +105,12 @@ class SqliteStorage:
     def mark_indexed(self, email_ids: list[int], indexed_at: str) -> None:
         db.mark_indexed(self._c, email_ids, indexed_at)
 
+    def run_index_job(self, reindex: bool, on_progress=None) -> dict:
+        # SQLite indexiert lokal direkt gegen ES (siehe commands/index.py).
+        raise NotImplementedError(
+            "SQLite-Backend indexiert lokal — run_index_job ist nur für REST."
+        )
+
     def get_raw_by_ref(self, mailbox: str, uidvalidity: int, uid: int) -> Row | None:
         return db.get_raw_by_ref(self._c, mailbox, uidvalidity, uid)
 

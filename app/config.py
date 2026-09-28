@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     REST_POLL_START: float = 0.5        # Sync-Job-Poll: Start-Backoff (s)
     REST_POLL_MAX: float = 5.0          # Sync-Job-Poll: max. Backoff (s)
     REST_POLL_DEADLINE: float = 600.0   # max. Wartezeit auf einen Sync-Job (s)
+    # Netz-Robustheit: Bei entferntem Server werden Keep-Alive-Verbindungen im
+    # Leerlauf (uvicorn-Default 5 s, NAT/Firewall) geschlossen. Wird eine solche
+    # tote Verbindung wiederverwendet, kommt "Connection reset by peer" (Errno 54).
+    # Deshalb idempotente Requests bei Transportfehlern automatisch neu senden und
+    # den Pool nicht länger als nötig offen halten.
+    REST_RETRIES: int = 3               # Wiederholungen je Request bei Transportfehler
+    REST_RETRY_BACKOFF: float = 0.5     # Start-Backoff zwischen Wiederholungen (s)
+    REST_KEEPALIVE_EXPIRY: float = 5.0  # Leerlauf-Lebensdauer gepoolter Verbindungen (s)
 
     # Elasticsearch (prod_stack). Server 9.x, Basic-Auth.
     ES_HOST: str = "http://localhost:9200"

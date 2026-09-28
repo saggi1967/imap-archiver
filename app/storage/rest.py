@@ -40,6 +40,10 @@ class RestStorage:
             headers={"Authorization": f"Bearer {self._token}"},
             verify=self._verify,
             timeout=self._timeout,
+            # Leerlauf-Verbindungen früh verwerfen, damit sie nicht nach dem
+            # server-/netzseitigen Idle-Timeout als tote Verbindung wiederverwendet
+            # werden (Ursache von "Connection reset by peer" beim entfernten Server).
+            limits=httpx.Limits(keepalive_expiry=settings.REST_KEEPALIVE_EXPIRY),
         )
         return self
 
@@ -59,34 +63,54 @@ class RestStorage:
             raise RuntimeError("RestStorage außerhalb des with-Blocks benutzt.")
         return self._client
 
+    def _send(self, method: str, url: str, **kwargs: object) -> httpx.Response:
+        """Request mit Wiederholung bei Transportfehlern (reset/idle-geschlossene
+        Keep-Alive-Verbindung, Verbindungsabbruch). Alle Aufrufer sind idempotent:
+        GET/PATCH sowieso, POST /sync-jobs ist per ``idempotency_key`` geschützt.
+        Bei einem ``TransportError`` verwirft httpx die kaputte Verbindung; die
+        Wiederholung baut automatisch eine frische auf.
+        """
+        attempts = settings.REST_RETRIES + 1
+        for i in range(attempts):
+            try:
+                return self._c.request(method, url, **kwargs)
+            except httpx.TransportError:
+                if i == attempts - 1:
+                    raise
+                time.sleep(min(settings.REST_RETRY_BACKOFF * (2**i), settings.REST_POLL_MAX))
+        # Unerreichbar — die Schleife kehrt zurück oder wirft.
+        raise AssertionError("unreachable")
+
     # -- Ordner -----------------------------------------------------------
     def get_mailbox(self, name: str) -> Row | None:
-        r = self._c.get(f"/mailboxes/{name}")
+        r = self._send("GET", f"/mailboxes/{name}")
         if r.status_code == 404:
             return None
         r.raise_for_status()
         return r.json()
 
     def upsert_mailbox(self, name: str) -> int:
-        r = self._c.post("/mailboxes", json={"name": name})
+        r = self._send("POST", "/mailboxes", json={"name": name})
         r.raise_for_status()
         return r.json()["id"]
 
     def reset_mailbox_state(self, mailbox_id: int, uidvalidity: int) -> None:
-        r = self._c.patch(
+        r = self._send(
+            "PATCH",
             f"/mailboxes/{mailbox_id}",
             json={"reset": "state", "uidvalidity": uidvalidity},
         )
         r.raise_for_status()
 
     def reset_mailbox_full(self, mailbox_id: int) -> None:
-        r = self._c.patch(f"/mailboxes/{mailbox_id}", json={"reset": "full"})
+        r = self._send("PATCH", f"/mailboxes/{mailbox_id}", json={"reset": "full"})
         r.raise_for_status()
 
     def update_mailbox_state(
         self, mailbox_id: int, uidvalidity: int, last_uid: int, imported_at: str
     ) -> None:
-        r = self._c.patch(
+        r = self._send(
+            "PATCH",
             f"/mailboxes/{mailbox_id}",
             json={
                 "uidvalidity": uidvalidity,
@@ -97,7 +121,7 @@ class RestStorage:
         r.raise_for_status()
 
     def list_mailboxes_with_counts(self) -> list[Row]:
-        r = self._c.get("/mailboxes", params={"with_counts": 1})
+        r = self._send("GET", "/mailboxes", params={"with_counts": 1})
         r.raise_for_status()
         return r.json()
 
@@ -122,7 +146,7 @@ class RestStorage:
             "last_uid": None,  # Wasserzeichen setzt update_mailbox_state separat
             "emails": [self._email_payload(e) for e in emails],
         }
-        r = self._c.post("/sync-jobs", json=payload)
+        r = self._send("POST", "/sync-jobs", json=payload)
         r.raise_for_status()
         tx_id = r.json()["tx_id"]
         job = self._poll_job(tx_id)
@@ -149,7 +173,7 @@ class RestStorage:
         delay = settings.REST_POLL_START
         deadline = time.monotonic() + settings.REST_POLL_DEADLINE
         while True:
-            r = self._c.get(f"/sync-jobs/{tx_id}")
+            r = self._send("GET", f"/sync-jobs/{tx_id}")
             r.raise_for_status()
             job = r.json()
             if job["status"] in ("done", "failed"):
@@ -159,16 +183,56 @@ class RestStorage:
             time.sleep(delay)
             delay = min(delay * 2, settings.REST_POLL_MAX)
 
+    # -- Index: server-seitiger Job --------------------------------------
+    def start_index_job(self, reindex: bool) -> str:
+        r = self._send("POST", "/index-jobs", json={"reindex": reindex})
+        r.raise_for_status()
+        return r.json()["tx_id"]
+
+    def get_index_job(self, tx_id: str) -> dict:
+        r = self._send("GET", f"/index-jobs/{tx_id}")
+        r.raise_for_status()
+        return r.json()
+
+    def run_index_job(self, reindex: bool, on_progress=None) -> dict:
+        """Stößt den server-seitigen Indexlauf an und pollt bis fertig.
+
+        Der Deadline-Watchdog greift nur bei *Stillstand*: solange ``processed``
+        wächst, läuft der Job weiter — so sind auch große Reindex-Läufe möglich,
+        ohne dass ein hartes Zeitlimit sie abwürgt.
+        """
+        tx_id = self.start_index_job(reindex)
+        delay = settings.REST_POLL_START
+        deadline = time.monotonic() + settings.REST_POLL_DEADLINE
+        last_processed = -1
+        while True:
+            job = self.get_index_job(tx_id)
+            if job["processed"] != last_processed:
+                last_processed = job["processed"]
+                deadline = time.monotonic() + settings.REST_POLL_DEADLINE
+            if on_progress:
+                on_progress(job)
+            if job["status"] in ("done", "failed"):
+                return job
+            if time.monotonic() > deadline:
+                raise TimeoutError(
+                    f"Index-Job {tx_id} ohne Fortschritt abgebrochen "
+                    f"(kein Fortschritt seit {settings.REST_POLL_DEADLINE:.0f}s)."
+                )
+            time.sleep(delay)
+            delay = min(delay * 2, settings.REST_POLL_MAX)
+
     # -- Mails: Index / lesen --------------------------------------------
     def count_pending_index(self, reindex: bool) -> int:
-        r = self._c.get("/emails/count", params={"reindex": reindex})
+        r = self._send("GET", "/emails/count", params={"reindex": reindex})
         r.raise_for_status()
         return r.json()["count"]
 
     def iter_emails_for_index(self, reindex: bool) -> Iterator[Row]:
         cursor = 0
         while True:
-            r = self._c.get(
+            r = self._send(
+                "GET",
                 "/emails",
                 params={
                     "index_pending": 1,
@@ -196,28 +260,29 @@ class RestStorage:
     def mark_indexed(self, email_ids: list[int], indexed_at: str) -> None:
         if not email_ids:
             return
-        r = self._c.patch(
+        r = self._send(
+            "PATCH",
             "/emails/mark-indexed",
             json={"ids": email_ids, "indexed_at": indexed_at},
         )
         r.raise_for_status()
 
     def get_raw_by_ref(self, mailbox: str, uidvalidity: int, uid: int) -> Row | None:
-        r = self._c.get(f"/emails/{mailbox}/{uidvalidity}/{uid}/raw")
+        r = self._send("GET", f"/emails/{mailbox}/{uidvalidity}/{uid}/raw")
         if r.status_code == 404:
             return None
         r.raise_for_status()
         return {"raw": r.content}
 
     def get_raw_by_message_id(self, message_id: str) -> Row | None:
-        r = self._c.get(f"/emails/by-message-id/{message_id}/raw")
+        r = self._send("GET", f"/emails/by-message-id/{message_id}/raw")
         if r.status_code == 404:
             return None
         r.raise_for_status()
         return {"raw": r.content}
 
     def stats_summary(self, top: int) -> StatsSummary:
-        r = self._c.get("/stats/summary", params={"top": top})
+        r = self._send("GET", "/stats/summary", params={"top": top})
         r.raise_for_status()
         s = r.json()
 

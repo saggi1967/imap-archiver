@@ -5,6 +5,56 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung an [PEP 440](https://peps.python.org/pep-0440/).
 
+## [2.6.0.0] – 2026-09-28
+
+Schwerpunkt dieses Releases ist die **server-seitige Indexierung** bei zentraler
+Speicherung — der Abschluss der offenen Phase 5 (Index-Strategie).
+
+### Behoben
+- **`mailarc index run` scheiterte bei entferntem Server mit
+  `NameResolutionError: host.docker.internal` bzw. `Connection error`.** Ursache:
+  die CLI öffnete auch bei `STORAGE_BACKEND=rest` eine **eigene** Elasticsearch-
+  Verbindung. Das ES des Servers ist aber nur auf dem Server-Host erreichbar
+  (`host.docker.internal`/localhost), nicht vom Client-Rechner. Indexieren ist jetzt
+  Server-Sache.
+
+### Hinzugefügt
+- **Server-seitige Indexierung (mailarc-server).** Neuer Endpunkt
+  `POST /index-jobs` (+ `GET /index-jobs/{tx_id}` fürs Polling) startet einen
+  asynchronen Index-Job: der Server baut die ES-Dokumente inkl. **Body- und
+  Anhang-Volltext** (PDF/DOCX/XLSX/Text) aus den zentral gespeicherten Roh-Mails und
+  schreibt sie per Bulk nach Elasticsearch — dort, wo ES erreichbar ist. Er legt
+  Index und Mapping selbst an. Nur ein Indexlauf gleichzeitig (Doppelarbeit
+  ausgeschlossen).
+
+### Geändert
+- **`mailarc index run` (rest-Modus)** stößt jetzt den Server-Job an und zeigt nur
+  den Fortschritt — der Client braucht **keinen ES-Zugang** (Host/Passwort) mehr.
+  `mailarc index init` ist im rest-Modus ein Hinweis (der Server verwaltet den Index).
+  Im `sqlite`-Modus bleibt alles wie bisher (lokale direkte ES-Indexierung).
+- ES-/Anhang-Einstellungen (`ES_*`, `ATTACHMENT_*`) liegen im rest-Modus in der
+  Server-Konfiguration; die gleichnamigen Client-Felder werden dann ignoriert.
+
+## [2.5.0.1] – 2026-09-23
+
+Patch-Release: **Sync gegen einen entfernten `mailarc-server` bricht nicht mehr mit
+„Connection reset by peer" ab.**
+
+### Behoben
+- **`ReadError: [Errno 54] Connection reset by peer` beim Sync (`STORAGE_BACKEND=rest`).**
+  Bei einem entfernten Server wurden Keep-Alive-Verbindungen im Leerlauf geschlossen
+  (uvicorn-Default 5 s, NAT/Firewall); die Wiederverwendung einer solchen toten
+  Verbindung führte zum Reset und ließ den PyInstaller-Build unbehandelt abstürzen
+  (`Failed to execute script 'entry'`). `RestStorage` sendet idempotente Requests
+  jetzt bei Transportfehlern automatisch neu (`_send` mit Backoff) und hält den
+  Verbindungspool nicht länger als nötig offen (`keepalive_expiry`).
+
+### Geändert
+- Neue Config-Schalter für die Netz-Robustheit: `REST_RETRIES` (3),
+  `REST_RETRY_BACKOFF` (0.5 s), `REST_KEEPALIVE_EXPIRY` (5 s).
+- **Server (`mailarc-server`):** uvicorn startet mit `--timeout-keep-alive 75`, damit
+  Leerlaufpausen zwischen IMAP-Fetches und Sync-Job-Polls nicht die Verbindung kosten.
+
 ## [2.5.0.0] – 2026-08-04
 
 Schwerpunkt dieses Releases ist die **Erstinstallation „ready to use"**: ein
@@ -151,6 +201,8 @@ präzisere Volltextsuche.
   Elasticsearch, Volltextsuche, Statistiken und PDF-/Office-Anhang-Extraktion
   über die `mailarc`-CLI.
 
+[2.6.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.6.0.0
+[2.5.0.1]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.5.0.1
 [2.5.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.5.0.0
 [2.4.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.4.0.0
 [2.3.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.3.0.0

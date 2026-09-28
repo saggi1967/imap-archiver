@@ -4,7 +4,7 @@
 
 **Read-only IMAP-Mailarchiv mit Volltextsuche – von der Mailbox in SQLite und Elasticsearch.**
 
-[![Version](https://img.shields.io/badge/version-2.5.0.0-blue)](#)
+[![Version](https://img.shields.io/badge/version-2.6.0.0-blue)](#)
 [![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](#)
 [![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.x-005571?logo=elasticsearch&logoColor=white)](#)
 [![CLI](https://img.shields.io/badge/CLI-Typer%20%2B%20Rich-009688)](#)
@@ -328,6 +328,33 @@ dann gegen den zentralen Service statt gegen die lokale SQLite-Datei. Der Sync
 lädt die Mails in **200er-Batches** als asynchrone Jobs hoch und pollt den
 Fortschritt; die Idempotenz `(Ordner, UIDVALIDITY, UID)` verhindert Duplikate,
 sodass mehrere Instanzen denselben Ordner gefahrlos parallel abholen können.
+
+**Indexierung läuft server-seitig.** Bei `STORAGE_BACKEND=rest` öffnet der Client
+**keine eigene Elasticsearch-Verbindung** mehr. `mailarc index run` stößt einen
+**Index-Job** auf dem Server an; der Server baut die Suchdokumente (Body- und
+Anhang-Volltext) aus den zentral gespeicherten Roh-Mails und schreibt sie nach ES —
+also genau dort, wo ES erreichbar ist. Der Client zeigt nur den Fortschritt an und
+braucht **weder ES-Host noch ES-Passwort**. Der Server legt Index und Mapping
+selbst an; `mailarc index init` ist im rest-Modus daher nur ein Hinweis. Die ES-
+und Anhang-Einstellungen (`ES_*`, `ATTACHMENT_*`) liegen im rest-Modus in der
+Server-Konfiguration, nicht mehr beim Client.
+
+**Netz-Robustheit (entfernter Server):** Zwischen den HTTP-Requests liegen
+Leerlaufpausen (IMAP-Fetch des nächsten Batches, Sync-Job-Polling). Läuft der
+Server auf einem anderen Rechner, schließen uvicorn (Default 5 s) oder NAT/Firewall
+solche Leerlaufverbindungen — deren Wiederverwendung ergab früher
+`Connection reset by peer`. Der Client wiederholt idempotente Requests deshalb
+automatisch bei Transportfehlern und hält den Verbindungspool nur kurz offen.
+Feinjustierbar über die `.env`:
+
+| Variable | Default | Bedeutung |
+|---|---|---|
+| `REST_RETRIES` | `3` | Wiederholungen je Request bei Transportfehler |
+| `REST_RETRY_BACKOFF` | `0.5` | Start-Backoff zwischen Wiederholungen (s) |
+| `REST_KEEPALIVE_EXPIRY` | `5.0` | Leerlauf-Lebensdauer gepoolter Verbindungen (s) |
+
+Serverseitig startet `mailarc-server` mit `--timeout-keep-alive 75`, damit die
+Leerlaufpausen nicht die Verbindung kosten.
 
 ### Zentrale IMAP-Zugangsdaten (statt Passwort je `.env`)
 
