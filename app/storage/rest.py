@@ -222,6 +222,22 @@ class RestStorage:
             time.sleep(delay)
             delay = min(delay * 2, settings.REST_POLL_MAX)
 
+    # -- Suche: server-seitiger ES-Proxy ---------------------------------
+    def es_search(self, body: dict) -> dict:
+        """Führt eine ES-Suche server-seitig aus (der Client hat keinen ES-Zugang).
+
+        ``body`` enthält die ``search()``-Parameter (query, size, sort, highlight,
+        source_includes/excludes, aggs …); zurück kommt die rohe ES-Antwort.
+        """
+        r = self._send("POST", "/es/search", json=body)
+        r.raise_for_status()
+        return r.json()
+
+    def es_count(self, query: dict) -> int:
+        r = self._send("POST", "/es/count", json={"query": query})
+        r.raise_for_status()
+        return r.json()["count"]
+
     # -- Mails: Index / lesen --------------------------------------------
     def count_pending_index(self, reindex: bool) -> int:
         r = self._send("GET", "/emails/count", params={"reindex": reindex})

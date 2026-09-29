@@ -18,6 +18,30 @@ from app.storage import get_storage
 _MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
 _WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 
+
+def _is_rest() -> bool:
+    return settings.STORAGE_BACKEND.strip().lower() == "rest"
+
+
+def _es_search(**body) -> dict:
+    """Führt eine ES-Suche aus — server-seitig bei ``STORAGE_BACKEND=rest``, sonst lokal.
+
+    ``body`` sind die ``search()``-Parameter (query, size, sort, highlight,
+    source_includes/excludes, aggs …). Rückgabe: die rohe ES-Antwort. Im rest-Modus
+    hat der Client keinen eigenen ES-Zugang; die Suche läuft über den mailarc-server.
+    """
+    if _is_rest():
+        with get_storage() as storage:
+            return storage.es_search(body)
+    return es.client().search(index=settings.ES_INDEX, **body)
+
+
+def _es_count(query: dict) -> int:
+    if _is_rest():
+        with get_storage() as storage:
+            return storage.es_count(query)
+    return es.client().count(index=settings.ES_INDEX, query=query)["count"]
+
 # Der Modus wird vom Root-Typer (main.py) gesteuert: rich_markup_mode=None,
 # damit \b die Zeilenumbrüche der Beispiel-Epiloge in --help erhält.
 app = typer.Typer(
@@ -299,9 +323,7 @@ def query(
     q = build_query(
         text, frm, to, domain, subject, file, mailbox, attachments, since_iso, until, phrase
     )
-    client = es.client()
-    resp = client.search(
-        index=settings.ES_INDEX,
+    resp = _es_search(
         query=q,
         size=limit,
         sort=[{"date": {"order": "desc", "missing": "_last"}}],
@@ -372,8 +394,7 @@ def count(
     """Zählt Treffer, ohne sie auszugeben."""
     since_iso = _parse_last(last) if last else since
     q = build_query(text, frm, None, domain, None, None, mailbox, None, since_iso, until, phrase)
-    client = es.client()
-    n = client.count(index=settings.ES_INDEX, query=q)["count"]
+    n = _es_count(q)
     console.print(f"[bold green]{n}[/] Treffer")
 
 
@@ -382,14 +403,13 @@ def show(
     doc_id: str = typer.Argument(..., help="Dokument-ID (mailbox:uidvalidity:uid) oder Message-ID."),
 ) -> None:
     """Zeigt eine einzelne Mail vollständig (inkl. Body und Anhängen)."""
-    client = es.client()
     src = None
-    if client.exists(index=settings.ES_INDEX, id=doc_id):
-        src = client.get(index=settings.ES_INDEX, id=doc_id)["_source"]
+    # Erst über die Dokument-ID (mailbox:uidvalidity:uid), sonst über die Message-ID.
+    resp = _es_search(query={"ids": {"values": [doc_id]}}, size=1)
+    if resp["hits"]["hits"]:
+        src = resp["hits"]["hits"][0]["_source"]
     else:
-        resp = client.search(
-            index=settings.ES_INDEX, query={"term": {"message_id": doc_id}}, size=1
-        )
+        resp = _es_search(query={"term": {"message_id": doc_id}}, size=1)
         if resp["hits"]["hits"]:
             src = resp["hits"]["hits"][0]["_source"]
 
@@ -435,13 +455,11 @@ def recent(
     since_iso = _parse_last(last) if last else since
     q = build_query(None, frm, None, domain, None, None, mailbox, None, since_iso, until)
 
-    client = es.client()
     includes = ["date", "from_addr", "from_name", "subject", "mailbox", "uid", "uidvalidity",
                 "has_attachment", "attachment_count"]
     if preview:
         includes.append("body")
-    resp = client.search(
-        index=settings.ES_INDEX,
+    resp = _es_search(
         query=q,
         size=limit,
         sort=[{"date": {"order": "desc", "missing": "_last"}}],
@@ -645,9 +663,7 @@ def pdf_batch(
         text, frm, to, domain, subject, file, mailbox, attachments, since_iso, until, phrase
     )
 
-    client = es.client()
-    resp = client.search(
-        index=settings.ES_INDEX,
+    resp = _es_search(
         query=q,
         size=limit,
         # aufsteigend, damit die lfd. Nummer bei Datumsgleichheit chronologisch läuft
@@ -736,9 +752,7 @@ def top(
     size: int = typer.Option(15, "--size", "-n", help="Anzahl Gruppen."),
 ) -> None:
     """Häufigkeits-Auswertung (Aggregation) über ein keyword-Feld."""
-    client = es.client()
-    resp = client.search(
-        index=settings.ES_INDEX,
+    resp = _es_search(
         size=0,
         aggs={"grp": {"terms": {"field": by, "size": size}}},
     )

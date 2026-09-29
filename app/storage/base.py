@@ -79,6 +79,13 @@ class StorageBackend(Protocol):
 
     def count_pending_index(self, reindex: bool) -> int: ...
     def iter_emails_for_index(self, reindex: bool) -> Iterator[Row]: ...
+    def es_search(self, body: dict) -> dict:
+        """Nur REST: führt eine ES-Suche server-seitig aus (der Client hat keinen
+        ES-Zugang). SQLite/lokal sucht direkt über ``es.client()``."""
+        ...
+    def es_count(self, query: dict) -> int:
+        """Nur REST: ES-Trefferzahl server-seitig. Lokal direkt über ``es.client()``."""
+        ...
     def run_index_job(self, reindex: bool, on_progress=None) -> dict:
         """Nur REST: stößt die server-seitige Indexierung an und pollt bis fertig.
 

@@ -5,6 +5,23 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung an [PEP 440](https://peps.python.org/pep-0440/).
 
+## [2.6.1.0] – 2026-09-29
+
+Folge-Release zur server-seitigen Indexierung: **auch die Suche läuft im rest-Modus
+server-seitig** — der Client spricht Elasticsearch nirgends mehr direkt an.
+
+### Behoben
+- **`mailarc search …` scheiterte bei zentraler Speicherung mit
+  `AuthenticationException (401)` bzw. lief gegen ein für den Client falsches
+  `ES_HOST`.** Ursache: `query`/`count`/`show`/`recent`/`top`/`pdf-batch` öffneten
+  selbst eine ES-Verbindung. Diese Befehle laufen jetzt im rest-Modus über den
+  Server (`POST /es/search`, `POST /es/count`); im `sqlite`-Modus unverändert lokal.
+
+### Geändert
+- `RestStorage.es_search`/`es_count`; der Server bekommt einen bearer-geschützten
+  Such-Proxy, fest auf den Index gescoped. Der Client braucht damit **für nichts**
+  mehr einen eigenen ES-Zugang (Sync, Index, Suche laufen alle über den Server).
+
 ## [2.6.0.0] – 2026-09-28
 
 Schwerpunkt dieses Releases ist die **server-seitige Indexierung** bei zentraler
@@ -201,6 +218,7 @@ präzisere Volltextsuche.
   Elasticsearch, Volltextsuche, Statistiken und PDF-/Office-Anhang-Extraktion
   über die `mailarc`-CLI.
 
+[2.6.1.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.6.1.0
 [2.6.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.6.0.0
 [2.5.0.1]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.5.0.1
 [2.5.0.0]: https://github.com/saggi1967/imap-archiver/releases/tag/v2.5.0.0

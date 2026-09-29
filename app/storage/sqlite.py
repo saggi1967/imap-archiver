@@ -111,6 +111,13 @@ class SqliteStorage:
             "SQLite-Backend indexiert lokal — run_index_job ist nur für REST."
         )
 
+    def es_search(self, body: dict) -> dict:
+        # SQLite sucht lokal direkt über es.client() (siehe commands/search.py).
+        raise NotImplementedError("SQLite-Backend sucht lokal — es_search ist nur für REST.")
+
+    def es_count(self, query: dict) -> int:
+        raise NotImplementedError("SQLite-Backend sucht lokal — es_count ist nur für REST.")
+
     def get_raw_by_ref(self, mailbox: str, uidvalidity: int, uid: int) -> Row | None:
         return db.get_raw_by_ref(self._c, mailbox, uidvalidity, uid)
 

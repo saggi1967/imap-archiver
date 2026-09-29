@@ -4,7 +4,7 @@
 
 **Read-only IMAP-Mailarchiv mit Volltextsuche – von der Mailbox in SQLite und Elasticsearch.**
 
-[![Version](https://img.shields.io/badge/version-2.6.0.0-blue)](#)
+[![Version](https://img.shields.io/badge/version-2.6.1.0-blue)](#)
 [![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](#)
 [![Elasticsearch](https://img.shields.io/badge/Elasticsearch-9.x-005571?logo=elasticsearch&logoColor=white)](#)
 [![CLI](https://img.shields.io/badge/CLI-Typer%20%2B%20Rich-009688)](#)
@@ -329,15 +329,16 @@ lädt die Mails in **200er-Batches** als asynchrone Jobs hoch und pollt den
 Fortschritt; die Idempotenz `(Ordner, UIDVALIDITY, UID)` verhindert Duplikate,
 sodass mehrere Instanzen denselben Ordner gefahrlos parallel abholen können.
 
-**Indexierung läuft server-seitig.** Bei `STORAGE_BACKEND=rest` öffnet der Client
-**keine eigene Elasticsearch-Verbindung** mehr. `mailarc index run` stößt einen
-**Index-Job** auf dem Server an; der Server baut die Suchdokumente (Body- und
+**Indexierung *und* Suche laufen server-seitig.** Bei `STORAGE_BACKEND=rest` öffnet
+der Client **keine eigene Elasticsearch-Verbindung** mehr. `mailarc index run` stößt
+einen **Index-Job** auf dem Server an; der Server baut die Suchdokumente (Body- und
 Anhang-Volltext) aus den zentral gespeicherten Roh-Mails und schreibt sie nach ES —
-also genau dort, wo ES erreichbar ist. Der Client zeigt nur den Fortschritt an und
-braucht **weder ES-Host noch ES-Passwort**. Der Server legt Index und Mapping
-selbst an; `mailarc index init` ist im rest-Modus daher nur ein Hinweis. Die ES-
-und Anhang-Einstellungen (`ES_*`, `ATTACHMENT_*`) liegen im rest-Modus in der
-Server-Konfiguration, nicht mehr beim Client.
+also genau dort, wo ES erreichbar ist. Der Client zeigt nur den Fortschritt an. Der
+Server legt Index und Mapping selbst an; `mailarc index init` ist im rest-Modus daher
+nur ein Hinweis. Ebenso gehen die Such-Befehle (`search query`/`count`/`show`/`recent`/
+`top`/`pdf-batch`) über den Server (`POST /es/search`, `POST /es/count`). Der Client
+braucht damit **weder ES-Host noch ES-Passwort** — die ES- und Anhang-Einstellungen
+(`ES_*`, `ATTACHMENT_*`) liegen im rest-Modus in der Server-Konfiguration.
 
 **Netz-Robustheit (entfernter Server):** Zwischen den HTTP-Requests liegen
 Leerlaufpausen (IMAP-Fetch des nächsten Batches, Sync-Job-Polling). Läuft der
